@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 # Bump this constant when state shape changes. Every step in between needs a
 # MIGRATIONS entry (trivial version-stamp for additive bumps; real transform for
 # breaking ones) — enforced by test_migration_registry_is_complete.
-CURRENT_SCHEMA_VERSION: int = 3
+CURRENT_SCHEMA_VERSION: int = 4
 
 
 def _merge_dicts(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
@@ -156,6 +156,86 @@ class ServiceKnowledge(BaseModel):
     notes: str | None = None
 
 
+class BlastRadius(BaseModel):
+    """Pre-flight impact estimate for a remediation action (Phase 4).
+
+    Conservative by design (over-estimate). Populated by the blast-radius
+    estimator (W3) from the k8s API + the cluster knowledge graph; shown in the
+    approval UI and enforced against per-policy caps.
+    """
+
+    pods_affected: int | None = None
+    traffic_percent: float | None = None  # approx. share of service traffic affected
+    dependents: list[str] = Field(default_factory=list)  # services that ride on the target
+    summary: str = ""
+
+
+class RemediationAction(BaseModel):
+    """A single executable remediation, mapped to one ``mcp-k8s-write`` tool (Phase 4).
+
+    The remediation agent only *proposes* these — execution is a separate, gated
+    step (policy → blast radius → approval → execute). ``reversibility`` and
+    ``approval_tier`` drive the gating; irreversible actions never auto-execute.
+    """
+
+    tool: str  # write tool name, e.g. "rollout_undo" | "scale" | "restart"
+    target: str  # e.g. "deployment/checkout-service"
+    namespace: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    rationale: str = ""
+    reversibility: str = "reversible"  # "reversible" | "partial" | "irreversible"
+    approval_tier: str = "operator"  # minimum role to approve: "operator" | "admin"
+    estimated_blast_radius: BlastRadius | None = None
+    dry_run_preview: str | None = None  # the would-be diff from a server-side dry run
+    priority: int = 1  # 1 = highest
+
+
+class RemediationPlan(BaseModel):
+    """The ranked set of proposed remediation actions for an incident (Phase 4)."""
+
+    actions: list[RemediationAction] = Field(default_factory=list)
+    notes: str | None = None
+    generated_at: datetime | None = None  # stamped by the remediation node
+
+
+class Approval(BaseModel):
+    """A human decision on a remediation plan/action (Phase 4).
+
+    ``decision`` is the outcome of the HITL gate; ``pending`` means the graph is
+    interrupted waiting for a human. Every decision (incl. expiry) is audited.
+    """
+
+    action_index: int | None = None  # None = plan-level decision
+    decision: str = "pending"  # "pending" | "approved" | "rejected" | "expired"
+    approver_role: str | None = None  # role that decided (operator | admin)
+    approver: str | None = None
+    reason: str | None = None
+    decided_at: datetime | None = None
+
+
+class ExecutionRecord(BaseModel):
+    """The audited outcome of running one remediation action (Phase 4)."""
+
+    action_index: int
+    tool: str
+    target: str
+    namespace: str
+    status: str  # "dry_run" | "succeeded" | "failed" | "skipped"
+    dry_run: bool = True
+    output: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class RollbackRecord(BaseModel):
+    """An automatic revert of a previously-executed reversible action (Phase 4)."""
+
+    action_index: int
+    reason: str
+    status: str  # "succeeded" | "failed"
+    at: datetime | None = None
+
+
 class InvestigationState(BaseModel):
     """Top-level LangGraph state for a single investigation.
 
@@ -208,6 +288,16 @@ class InvestigationState(BaseModel):
     # (rca/critic/recommendation) can record its own arm without clobbering others.
     prompt_versions: Annotated[dict[str, str], _merge_dicts] = Field(default_factory=dict)
 
+    # Phase 4 additive fields (schema v4). All default empty/None so v1/v2/v3
+    # checkpoints deserialize cleanly (the v3->v4 migration only stamps the version).
+    # The whole remediation path is gated + read-only-by-default: these stay empty
+    # unless an operator has enabled remediation and a plan is proposed/approved.
+    remediation_plan: RemediationPlan | None = None  # proposed executable actions
+    approvals: list[Approval] = Field(default_factory=list)  # HITL decisions
+    executions: list[ExecutionRecord] = Field(default_factory=list)  # audited runs
+    rollbacks: list[RollbackRecord] = Field(default_factory=list)  # auto-reverts
+    remediation_outcome: str | None = None  # "pending_approval"|"rejected"|"closed"|"reopened"
+
     # Trace metadata
     started_at: datetime
     finished_at: datetime | None = None
@@ -244,9 +334,17 @@ def _v2_to_v3(blob: dict[str, Any]) -> dict[str, Any]:
     return blob
 
 
+def _v3_to_v4(blob: dict[str, Any]) -> dict[str, Any]:
+    """v3 -> v4: additive only (remediation_plan, approvals, executions, rollbacks,
+    remediation_outcome). New fields fill from defaults; we only stamp the version."""
+    blob = {**blob, "schema_version": 4}
+    return blob
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _v1_to_v2,
     2: _v2_to_v3,
+    3: _v3_to_v4,
 }
 
 

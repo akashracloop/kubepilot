@@ -1,0 +1,213 @@
+{
+  "schema_version": 4,
+  "incident_id": "55555555-5555-5555-5555-555555555555",
+  "query": "why is checkout-service slow?",
+  "namespace": "prod",
+  "service": "checkout-service",
+  "time_window_minutes": 30,
+  "current_step": "completed",
+  "completed_agents": [
+    "kubernetes",
+    "metrics",
+    "logs",
+    "tracing",
+    "deployment",
+    "memory",
+    "knowledge",
+    "rca",
+    "critic",
+    "recommendation"
+  ],
+  "evidence": [
+    {
+      "source_agent": "tracing",
+      "kind": "latency_hotspot",
+      "summary": "p99 latency dominated by downstream payments-db call (1.8s of 2.0s)",
+      "detail": {
+        "slowest_span": "payments-db",
+        "p99_ms": 2000
+      },
+      "severity": "error",
+      "collected_at": "2026-07-02T10:08:00Z"
+    },
+    {
+      "source_agent": "deployment",
+      "kind": "recent_deploy",
+      "summary": "checkout-service deployed v2.3.1 eight minutes before the latency spike",
+      "detail": {
+        "version": "v2.3.1",
+        "deployed_at": "2026-07-02T10:00:00Z"
+      },
+      "severity": "warning",
+      "collected_at": "2026-07-02T10:08:05Z"
+    }
+  ],
+  "agent_outputs": {
+    "tracing": {
+      "agent_name": "tracing",
+      "succeeded": true,
+      "evidence": [],
+      "notes": null,
+      "tokens_used": 1100,
+      "latency_ms": 950
+    },
+    "deployment": {
+      "agent_name": "deployment",
+      "succeeded": true,
+      "evidence": [],
+      "notes": null,
+      "tokens_used": 700,
+      "latency_ms": 600
+    }
+  },
+  "rca": {
+    "root_cause": "Deploy v2.3.1 added an N+1 query against payments-db, driving p99 latency",
+    "root_cause_category": "LatencyRegression",
+    "confidence": 0.88,
+    "evidence_refs": [
+      0,
+      1
+    ],
+    "reasoning": "Trace shows payments-db dominates p99; the deploy 8 min prior correlates; a similar past incident resolved by reverting the query change.",
+    "recommendations": [
+      "Roll back to v2.3.0",
+      "Add a query index / batch the N+1"
+    ]
+  },
+  "recommendations": [
+    {
+      "title": "Roll back deployment",
+      "rationale": "Restore the previous image while the query fix is prepared.",
+      "commands": [
+        "kubectl rollout undo deployment/checkout-service -n prod"
+      ],
+      "risk": "medium",
+      "reversibility": "reversible",
+      "priority": 1,
+      "requires_approval": true,
+      "estimated_blast_radius": null
+    }
+  ],
+  "confidence": 0.88,
+  "failed_with": null,
+  "total_tokens_used": 1800,
+  "memory_context": [
+    {
+      "incident_id": "33333333-3333-3333-3333-333333333333",
+      "summary": "checkout-service latency regression from an N+1 query after a deploy",
+      "root_cause_category": "LatencyRegression",
+      "namespace": "prod",
+      "service": "checkout-service",
+      "similarity": 0.91,
+      "outcome": "resolved by reverting the query change",
+      "occurred_at": "2026-05-14T09:00:00Z"
+    }
+  ],
+  "timeline": [
+    {
+      "at": "2026-07-02T10:00:00Z",
+      "label": "deploy_started",
+      "description": "checkout-service v2.3.1 rolled out",
+      "source": "deployment",
+      "severity": "info"
+    },
+    {
+      "at": "2026-07-02T10:08:00Z",
+      "label": "latency_spike",
+      "description": "p99 latency crossed SLO",
+      "source": "tracing",
+      "severity": "error"
+    },
+    {
+      "at": "2026-07-02T10:10:00Z",
+      "label": "incident_created",
+      "description": "investigation triggered",
+      "source": "kubernetes",
+      "severity": "warning"
+    }
+  ],
+  "critique": {
+    "agreement": 0.9,
+    "concerns": [
+      "Deploy correlation is strong but a config change at 10:05 was not ruled out"
+    ],
+    "adjusted_confidence": 0.85,
+    "escalate_to_human": false
+  },
+  "knowledge_context": [
+    {
+      "service": "checkout-service",
+      "owner": "payments-team",
+      "dependencies": [
+        "payments-db",
+        "inventory-service"
+      ],
+      "dependents": [
+        "web-frontend"
+      ],
+      "slos": {
+        "p99_latency_ms": 500,
+        "availability": 0.999
+      },
+      "last_deploy": "2026-07-02T10:00:00Z",
+      "notes": "Owns the checkout critical path; paged team is payments-team."
+    }
+  ],
+  "calibrated_confidence": 0.85,
+  "prompt_versions": {
+    "rca": "v2",
+    "critic": "v1"
+  },
+  "started_at": "2026-07-02T10:09:00Z",
+  "finished_at": "2026-07-02T10:09:20Z",
+  "remediation_plan": {
+    "actions": [
+      {
+        "tool": "rollout_undo",
+        "target": "deployment/checkout-service",
+        "namespace": "prod",
+        "arguments": {},
+        "rationale": "Revert the v2.3.1 deploy that introduced the N+1 query.",
+        "reversibility": "reversible",
+        "approval_tier": "operator",
+        "estimated_blast_radius": {
+          "pods_affected": 3,
+          "traffic_percent": 100.0,
+          "dependents": [
+            "web-frontend"
+          ],
+          "summary": "All checkout pods roll back."
+        },
+        "dry_run_preview": "deployment.apps/checkout-service rolled back to revision 4 (dry run)",
+        "priority": 1
+      }
+    ],
+    "notes": "Reversible-first: prefer the rollback while a query fix is prepared.",
+    "generated_at": "2026-07-02T10:09:10Z"
+  },
+  "approvals": [
+    {
+      "action_index": 0,
+      "decision": "approved",
+      "approver_role": "operator",
+      "approver": "sre-oncall",
+      "reason": "Confirmed blast radius acceptable.",
+      "decided_at": "2026-07-02T10:09:15Z"
+    }
+  ],
+  "executions": [
+    {
+      "action_index": 0,
+      "tool": "rollout_undo",
+      "target": "deployment/checkout-service",
+      "namespace": "prod",
+      "status": "succeeded",
+      "dry_run": false,
+      "output": "deployment.apps/checkout-service rolled back",
+      "started_at": "2026-07-02T10:09:16Z",
+      "finished_at": "2026-07-02T10:09:18Z"
+    }
+  ],
+  "rollbacks": [],
+  "remediation_outcome": "closed"
+}
