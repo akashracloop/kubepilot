@@ -125,10 +125,10 @@ def make_approval_router(*, principal_dep) -> APIRouter:  # type: ignore[no-unty
         )
 
         # Once every action has a terminal decision, resume the paused graph so the
-        # execute node runs (approved → writes; rejected/expired → resolve without
-        # writes → finalize). While the plan is still partially decided we just
-        # accumulate the decision and keep waiting.
-        if state.remediation_outcome in ("approved", "rejected", "expired"):
+        # execute node runs (approved/partial → writes the approved subset;
+        # rejected/expired → resolve without writes → finalize). While the plan is
+        # still partially decided we just accumulate the decision and keep waiting.
+        if state.remediation_outcome in ("approved", "partial", "rejected", "expired"):
             orchestrator = getattr(request.app.state, "orchestrator", None)
             if orchestrator is not None:
                 orchestrator.start_resume(incident_id)

@@ -63,9 +63,18 @@ def test_pending_until_all_approved() -> None:
     assert approval.plan_status(plan, both) == "approved"
 
 
-def test_any_rejection_rejects_the_plan() -> None:
+def test_mixed_decisions_are_partial() -> None:
+    # A mix of approve + reject → "partial": execute the approved subset, skip the
+    # rejected one (per-action approval, not all-or-nothing).
     plan = _plan("operator", "operator")
     decisions = [_decide(0, "approved", "operator"), _decide(1, "rejected", "operator")]
+    assert approval.plan_status(plan, decisions) == "partial"
+    assert approval.approved_action_indices(plan, decisions) == [0]
+
+
+def test_all_rejected_rejects_the_plan() -> None:
+    plan = _plan("operator", "operator")
+    decisions = [_decide(0, "rejected", "operator"), _decide(1, "rejected", "operator")]
     assert approval.plan_status(plan, decisions) == "rejected"
 
 

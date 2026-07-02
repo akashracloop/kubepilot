@@ -6,7 +6,8 @@ approves or rejects via the API. This module holds the pure decision logic:
 - **Approver RBAC** — an approver's role must be at least the action's required
   tier (operator for reversible actions, admin for partial/irreversible).
 - **Plan status** — from the recorded per-action decisions (+ an expiry TTL):
-  ``approved`` (every action approved), ``rejected`` (any rejected), ``expired``
+  ``approved`` (every action approved), ``rejected`` (every action rejected),
+  ``partial`` (all decided, a mix — execute the approved subset), ``expired``
   (undecided past the TTL), or ``pending_approval``.
 
 Fail-safe: an unknown role, a missing decision, or an expired plan all resolve to
@@ -79,11 +80,17 @@ def plan_status(
     latest = _latest_decisions(approvals)
     decisions = [latest.get(i) for i in range(len(plan.actions))]
 
-    if any(d == "rejected" for d in decisions):
-        return "rejected"
-    if all(d == "approved" for d in decisions):
-        return "approved"
-    # Undecided: lapse it once past the TTL (fail-safe — no stale auto-approval).
+    # Every action has a terminal decision → the plan is ready to execute the
+    # approved subset. All-approved / all-rejected are the pure cases; a mix is
+    # "partial" (execute the approved actions, skip the rejected ones).
+    if all(d in ("approved", "rejected") for d in decisions):
+        if all(d == "approved" for d in decisions):
+            return "approved"
+        if all(d == "rejected" for d in decisions):
+            return "rejected"
+        return "partial"
+    # Some action still undecided: lapse the plan once past the TTL (fail-safe —
+    # no stale auto-approval).
     if generated_at is not None and now - generated_at > ttl:
         return "expired"
     return "pending_approval"

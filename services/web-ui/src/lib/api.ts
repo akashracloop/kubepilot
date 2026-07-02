@@ -13,7 +13,12 @@ export const API_BASE_URL = (
 
 export const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
-export type InvestigationStatus = "pending" | "running" | "completed" | "failed";
+export type InvestigationStatus =
+  | "pending"
+  | "running"
+  | "pending_approval"
+  | "completed"
+  | "failed";
 
 export interface Evidence {
   source_agent: string;
@@ -242,6 +247,80 @@ export async function decideRemediation(
     body: JSON.stringify({ action_index: actionIndex }),
   });
   return handle<{ status: string; action_index: number }>(res);
+}
+
+// ---------------------------------------------------------------------------
+// Settings (UI-editable live config). Mutations require an admin key; because
+// the baked NEXT_PUBLIC_API_KEY may not be admin, the Settings page lets the
+// user paste an admin key that we store locally and send on settings requests.
+// ---------------------------------------------------------------------------
+
+const ADMIN_KEY_STORAGE = "kp_admin_key";
+
+export function getAdminKey(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(ADMIN_KEY_STORAGE) || "";
+}
+
+export function setAdminKey(key: string): void {
+  if (typeof window === "undefined") return;
+  if (key) window.localStorage.setItem(ADMIN_KEY_STORAGE, key);
+  else window.localStorage.removeItem(ADMIN_KEY_STORAGE);
+}
+
+function settingsHeaders(extra?: Record<string, string>): Record<string, string> {
+  const key = getAdminKey() || API_KEY;
+  const headers: Record<string, string> = { ...(extra || {}) };
+  if (key) headers["X-API-Key"] = key;
+  return headers;
+}
+
+export interface SettingField {
+  key: string;
+  kind: "bool" | "string" | "select" | "csv" | "json";
+  label: string;
+  help: string;
+  options: string[] | null;
+  restart_required: boolean;
+  value: unknown;
+  overridden: boolean;
+}
+
+export interface SettingsResponse {
+  groups: Record<string, SettingField[]>;
+  readonly: { label: string; value: string }[];
+  kill_switch: boolean;
+  editable: boolean;
+}
+
+export async function getSettings(): Promise<SettingsResponse> {
+  const res = await fetch(`${API_BASE_URL}/settings`, {
+    headers: settingsHeaders(),
+    cache: "no-store",
+  });
+  return handle<SettingsResponse>(res);
+}
+
+export async function putSettings(
+  overrides: Record<string, unknown>
+): Promise<{ ok: boolean; rebuilt: boolean }> {
+  const res = await fetch(`${API_BASE_URL}/settings`, {
+    method: "PUT",
+    headers: settingsHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ overrides }),
+  });
+  return handle<{ ok: boolean; rebuilt: boolean }>(res);
+}
+
+export async function setKillSwitch(
+  enabled: boolean
+): Promise<{ kill_switch: boolean }> {
+  const res = await fetch(`${API_BASE_URL}/settings/kill-switch`, {
+    method: "POST",
+    headers: settingsHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ enabled }),
+  });
+  return handle<{ kill_switch: boolean }>(res);
 }
 
 export interface StreamEvent {

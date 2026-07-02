@@ -138,11 +138,34 @@ async def test_admin_approves_both_actions_to_approved(client: httpx.AsyncClient
     assert r.json()["status"] == "approved"
 
 
-async def test_reject_marks_plan_rejected(client: httpx.AsyncClient) -> None:
+async def test_reject_one_of_two_stays_pending(client: httpx.AsyncClient) -> None:
+    # Per-action semantics: rejecting one action of a two-action plan leaves the
+    # plan pending until every action is decided.
     r = await client.post(
         f"/investigations/{_INCIDENT}/reject", headers=_h("operator-key"), json={"action_index": 0}
     )
+    assert r.json()["status"] == "pending_approval"
+
+
+async def test_all_rejected_marks_plan_rejected(client: httpx.AsyncClient) -> None:
+    await client.post(
+        f"/investigations/{_INCIDENT}/reject", headers=_h("operator-key"), json={"action_index": 0}
+    )
+    # action 1 is admin-tier (edit_configmap) → needs an admin to reject it.
+    r = await client.post(
+        f"/investigations/{_INCIDENT}/reject", headers=_h("admin-key"), json={"action_index": 1}
+    )
     assert r.json()["status"] == "rejected"
+
+
+async def test_mixed_decisions_are_partial(client: httpx.AsyncClient) -> None:
+    await client.post(
+        f"/investigations/{_INCIDENT}/approve", headers=_h("operator-key"), json={"action_index": 0}
+    )
+    r = await client.post(
+        f"/investigations/{_INCIDENT}/reject", headers=_h("admin-key"), json={"action_index": 1}
+    )
+    assert r.json()["status"] == "partial"
 
 
 async def test_viewer_cannot_approve(client: httpx.AsyncClient) -> None:

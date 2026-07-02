@@ -38,12 +38,16 @@ log = structlog.get_logger(__name__)
 
 
 def _default_compiled_graph(
-    settings: ApiSettings, checkpointer: Any | None = None, knowledge: Any | None = None
+    settings: ApiSettings,
+    checkpointer: Any | None = None,
+    knowledge: Any | None = None,
+    overrides: dict[str, Any] | None = None,
 ) -> Any:
     """Build the production graph wired to real MCP clients + the configured LLM router.
 
     Imported lazily so tests can build the app without the langchain dependencies
-    when they pass in their own ``compiled_graph``.
+    when they pass in their own ``compiled_graph``. ``overrides`` are the persisted
+    UI settings applied on top of env/config before the deps are built.
     """
     from kubepilot_orch.agents.prompt_registry import default_registry
     from kubepilot_orch.config import load_settings as load_orch_settings
@@ -51,7 +55,13 @@ def _default_compiled_graph(
     from kubepilot_orch.llm.factory import build_router
     from kubepilot_orch.mcp.adapter import Capability, build_router_from_endpoints
 
+    from kubepilot_api import settings_catalog
+
     orch_settings = load_orch_settings()
+    if overrides:
+        settings, orch_settings = settings_catalog.apply_overrides(
+            settings, orch_settings, overrides
+        )
 
     # Apply prompt-version pins (the rollback lever) to the shared registry that the
     # reasoning agents resolve against. Config-only + restart → rollback in <5 min.
@@ -260,6 +270,10 @@ def build_app(
     repo = repo or _default_repository(settings)
     bus = InvestigationBus()
 
+    from kubepilot_api.settings_store import build_settings_store
+
+    settings_store = build_settings_store(settings.storage, settings.db.url)
+
     # Eagerly-injected graph (tests) → bind the orchestrator now. Otherwise defer
     # to the lifespan so the checkpointer lifecycle brackets the app's lifetime.
     orchestrator: InvestigationOrchestrator | None = None
@@ -279,18 +293,33 @@ def build_app(
         # If the graph wasn't injected, build it here under an open checkpointer.
         if orchestrator is None:
             knowledge = await _build_and_ingest_knowledge(settings)
+            overrides = await settings_store.load()
             async with open_checkpointer(settings.checkpointer, settings.db.url) as checkpointer:
                 graph = _default_compiled_graph(
-                    settings, checkpointer=checkpointer, knowledge=knowledge
+                    settings, checkpointer=checkpointer, knowledge=knowledge, overrides=overrides
                 )
                 orch = InvestigationOrchestrator(compiled_graph=graph, repo=repo, bus=bus)
                 app.state.orchestrator = orch
+
+                async def _rebuild(new_overrides: dict[str, Any]) -> None:
+                    """Recompile the graph with the new UI overrides and hot-swap it."""
+                    new_graph = _default_compiled_graph(
+                        settings,
+                        checkpointer=checkpointer,
+                        knowledge=knowledge,
+                        overrides=new_overrides,
+                    )
+                    orch.set_graph(new_graph)
+                    log.info("graph_rebuilt_from_settings", keys=sorted(new_overrides))
+
+                app.state.rebuild_graph = _rebuild
                 try:
                     yield
                 finally:
                     log.info("api_stopping")
                     await orch.shutdown()
                     await repo.aclose()
+                    await settings_store.aclose()
         else:
             try:
                 yield
@@ -298,6 +327,7 @@ def build_app(
                 log.info("api_stopping")
                 await orchestrator.shutdown()
                 await repo.aclose()
+                await settings_store.aclose()
 
     app = FastAPI(
         title="KubePilot AI",
@@ -308,6 +338,7 @@ def build_app(
     app.state.repo = repo
     app.state.bus = bus
     app.state.settings = settings
+    app.state.settings_store = settings_store
     if orchestrator is not None:
         app.state.orchestrator = orchestrator
 
@@ -327,6 +358,10 @@ def build_app(
 
     app.include_router(make_approval_router(principal_dep=principal_dep))
     app.include_router(make_kill_switch_router(principal_dep=principal_dep))
+    # UI-editable settings (admin-gated live config).
+    from kubepilot_api.routes.settings import make_settings_router
+
+    app.include_router(make_settings_router(principal_dep=principal_dep))
 
     return app
 
