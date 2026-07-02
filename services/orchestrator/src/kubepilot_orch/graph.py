@@ -118,6 +118,14 @@ class AgentDeps:
     # (rollback.inverse_action). Without it, only self-inverting actions
     # (cordon↔uncordon) can be rolled back.
     pre_state_fn: Any | None = None
+    # Phase 4 W10 self-healing. The set of opt-in patterns (see selfheal.PATTERNS)
+    # that may execute WITHOUT interactive approval. Empty by default → the graph
+    # shape is unchanged and everything routes through the HITL interrupt. When
+    # non-empty AND a matching incident is found, the run routes to an autonomous
+    # self-heal node instead of the interrupt (still policy/blast/kill/audit/
+    # rollback gated). Requires mcp_write + policy.
+    selfheal_patterns: frozenset[str] = frozenset()
+    selfheal_actor_role: str = "operator"
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -291,14 +299,20 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
             "current_step": "remediation_executed",
             "completed_agents": ["remediation_exec"],
         }
-        failed = any(r.status == "failed" for r in records)
-        if failed:
-            update["remediation_outcome"] = "reopened"
-            return update
+        update.update(await _validate_execution(records, before, state))
+        return update
 
-        # W9: validate the fix against post-remediation signals; auto-rollback +
-        # reopen on regression, close on improvement. Without a signal fetcher we
-        # can only conclude the writes succeeded.
+    async def _validate_execution(
+        records: list[Any], before: dict[str, float] | None, state: InvestigationState
+    ) -> dict[str, Any]:
+        """Resolve the outcome after a write: reopen on failure/regression, close
+        on improvement, auto-rollback reversible actions on a regression (W8/W9).
+
+        Shared by the HITL execute node and the autonomous self-heal node.
+        """
+        if any(r.status == "failed" for r in records):
+            return {"remediation_outcome": "reopened"}
+        # Validate against post-remediation signals when a signal fetcher is wired.
         if deps.remediation_signal_fn is not None and before is not None:
             from kubepilot_orch.remediation import validation
 
@@ -306,12 +320,45 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
             result = await validation.finalize_remediation(
                 records, before, after, mcp_write=deps.mcp_write
             )
-            update["remediation_outcome"] = result.outcome
+            out: dict[str, Any] = {"remediation_outcome": result.outcome}
             if result.rollbacks:
-                update["rollbacks"] = result.rollbacks
-        else:
-            update["remediation_outcome"] = "closed"
+                out["rollbacks"] = result.rollbacks
+            return out
+        return {"remediation_outcome": "closed"}
+
+    async def self_heal_node(state: InvestigationState) -> dict[str, Any]:
+        # Autonomous path (W10): a matched, opt-in pattern executes WITHOUT the HITL
+        # interrupt but through every other gate (policy → blast cap → kill switch →
+        # audit → auto-rollback). Reached only when a pattern matched at routing.
+        from kubepilot_orch.remediation import selfheal
+
+        before = await deps.remediation_signal_fn(state) if deps.remediation_signal_fn else None
+        records = await selfheal.self_heal(
+            state,
+            enabled=deps.selfheal_patterns,
+            mcp_write=deps.mcp_write,
+            policy=deps.policy,
+            actor_role=deps.selfheal_actor_role,
+        )
+        update: dict[str, Any] = {
+            "executions": records,
+            "current_step": "self_healed",
+            "completed_agents": ["self_heal"],
+        }
+        if not records:  # pattern matched but policy/kill-switch skipped it
+            update["remediation_outcome"] = "reopened"
+            return update
+        update.update(await _validate_execution(records, before, state))
         return update
+
+    def _selfheal_route(state: InvestigationState) -> str:
+        """Route a matched+enabled self-heal incident to the autonomous node,
+        else to the normal HITL remediation branch."""
+        from kubepilot_orch.remediation import selfheal
+
+        if selfheal.select_action(state, deps.selfheal_patterns) is not None:
+            return "self_heal"
+        return "remediation"
 
     graph = StateGraph(InvestigationState)
 
@@ -379,10 +426,23 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
     if deps.enable_remediation:
         graph.add_node("remediation", remediation_node)
         graph.add_node("execute_remediation", execute_remediation_node)
-        graph.add_edge("recommendation", "remediation")
         graph.add_edge("remediation", "execute_remediation")
         graph.add_edge("execute_remediation", "finalize")
         interrupt_before.append("execute_remediation")
+        # W10 self-healing: when opt-in patterns are configured, route a matching
+        # incident to the autonomous node (no interrupt); everything else follows
+        # the HITL branch. With no patterns the recommendation → remediation edge
+        # is unconditional, so the Phase-1..4 default shape is unchanged.
+        if deps.selfheal_patterns:
+            graph.add_node("self_heal", self_heal_node)
+            graph.add_conditional_edges(
+                "recommendation",
+                _selfheal_route,
+                {"self_heal": "self_heal", "remediation": "remediation"},
+            )
+            graph.add_edge("self_heal", "finalize")
+        else:
+            graph.add_edge("recommendation", "remediation")
     else:
         graph.add_edge("recommendation", "finalize")
     graph.add_edge("finalize", END)

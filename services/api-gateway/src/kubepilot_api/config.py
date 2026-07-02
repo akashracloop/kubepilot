@@ -117,6 +117,17 @@ class ApiSettings(BaseSettings):
     # auto-rolls-back reversible actions on a regression. None → restarts-only
     # validation (workload-agnostic; no PromQL assumptions).
     remediation_signal_query: str | None = None
+    # Phase 4 W10 self-healing (autonomous fixes, still fully gated). Comma-separated
+    # opt-in pattern names (see selfheal.PATTERNS: imagepull_revert, crashloop_restart).
+    # Empty → no autonomy; every remediation goes through the HITL interrupt.
+    remediation_selfheal_patterns: str = ""
+    remediation_selfheal_role: str = "operator"
+
+    @property
+    def selfheal_pattern_set(self) -> frozenset[str]:
+        return frozenset(
+            p.strip() for p in self.remediation_selfheal_patterns.split(",") if p.strip()
+        )
 
 
 def load_settings() -> ApiSettings:

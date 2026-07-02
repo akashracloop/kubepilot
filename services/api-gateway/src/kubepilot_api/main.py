@@ -93,6 +93,10 @@ def _default_compiled_graph(
         remediation_signal_fn=(
             _build_signal_fn(settings, mcp_k8s, mcp_prom) if settings.remediation_enabled else None
         ),
+        selfheal_patterns=settings.selfheal_pattern_set
+        if settings.remediation_enabled
+        else frozenset(),
+        selfheal_actor_role=settings.remediation_selfheal_role,
     )
     return build_graph(deps, checkpointer=checkpointer)
 
