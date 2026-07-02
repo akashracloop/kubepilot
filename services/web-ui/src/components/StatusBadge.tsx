@@ -1,47 +1,58 @@
-import { cn } from "./ui";
+import { Badge } from "./ui";
 
-const STYLES: Record<string, string> = {
-  pending: "bg-neutral-100 text-neutral-700 border-neutral-200",
-  running: "bg-blue-50 text-blue-700 border-blue-200",
-  completed: "bg-green-50 text-green-700 border-green-200",
-  failed: "bg-red-50 text-red-700 border-red-200",
+type Tone = "neutral" | "brand" | "green" | "red" | "amber" | "blue" | "violet";
+
+const STATUS_TONE: Record<string, Tone> = {
+  pending: "neutral",
+  running: "blue",
+  pending_approval: "amber",
+  completed: "green",
+  failed: "red",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  pending_approval: "pending approval",
+};
+
+const DOT: Record<Tone, string> = {
+  neutral: "bg-ink-subtle",
+  brand: "bg-brand-500",
+  green: "bg-emerald-500",
+  red: "bg-red-500",
+  amber: "bg-amber-500",
+  blue: "bg-blue-500",
+  violet: "bg-violet-500",
 };
 
 export function StatusBadge({ status }: { status: string }) {
-  const cls = STYLES[status] ?? "bg-neutral-100 text-neutral-700 border-neutral-200";
+  const tone = STATUS_TONE[status] ?? "neutral";
+  const label = STATUS_LABEL[status] ?? status;
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize",
-        cls
-      )}
-    >
-      {status}
-    </span>
+    <Badge tone={tone} className="capitalize">
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${DOT[tone]} ${
+          status === "running" ? "animate-pulse" : ""
+        }`}
+      />
+      {label}
+    </Badge>
   );
 }
 
-const SEVERITY_STYLES: Record<string, string> = {
-  critical: "bg-red-100 text-red-800 border-red-200",
-  high: "bg-orange-100 text-orange-800 border-orange-200",
-  warning: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  info: "bg-blue-50 text-blue-700 border-blue-200",
-  low: "bg-neutral-100 text-neutral-700 border-neutral-200",
+const SEVERITY_TONE: Record<string, Tone> = {
+  critical: "red",
+  high: "amber",
+  warning: "amber",
+  medium: "amber",
+  info: "blue",
+  low: "neutral",
 };
 
 export function SeverityBadge({ severity }: { severity: string }) {
   const key = (severity || "").toLowerCase();
-  const cls =
-    SEVERITY_STYLES[key] ?? "bg-neutral-100 text-neutral-700 border-neutral-200";
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] font-medium capitalize",
-        cls
-      )}
-    >
+    <Badge tone={SEVERITY_TONE[key] ?? "neutral"} className="capitalize">
       {severity || "unknown"}
-    </span>
+    </Badge>
   );
 }

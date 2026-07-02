@@ -4,15 +4,23 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createInvestigation } from "@/lib/api";
 import {
+  Banner,
   Button,
   Card,
   CardBody,
-  CardHeader,
-  CardTitle,
+  Field,
   Input,
-  Label,
+  PageHeader,
+  Spinner,
   Textarea,
 } from "@/components/ui";
+import { Icon } from "@/components/icons";
+
+const EXAMPLES = [
+  "Why is payment-service returning 5xx?",
+  "checkout pods are restarting in prod",
+  "latency spiked after the last deploy",
+];
 
 export default function NewInvestigationPage() {
   const router = useRouter();
@@ -43,14 +51,19 @@ export default function NewInvestigationPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
+      <PageHeader
+        title="New investigation"
+        description="Describe the symptom. The multi-agent RCA loop correlates signals across the cluster API, Prometheus, Loki, Tempo and CI to find the root cause."
+      />
+
       <Card>
-        <CardHeader>
-          <CardTitle>Trigger an Investigation</CardTitle>
-        </CardHeader>
-        <CardBody>
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="query">Query</Label>
+        <CardBody className="p-5">
+          <form onSubmit={onSubmit} className="space-y-5">
+            <Field
+              label="What's going wrong?"
+              htmlFor="query"
+              hint="natural language"
+            >
               <Textarea
                 id="query"
                 required
@@ -59,28 +72,41 @@ export default function NewInvestigationPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {EXAMPLES.map((ex) => (
+                  <button
+                    key={ex}
+                    type="button"
+                    onClick={() => setQuery(ex)}
+                    className="rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] text-ink-muted transition-colors hover:border-brand-500 hover:text-brand-700"
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Namespace" htmlFor="namespace">
+                <Input
+                  id="namespace"
+                  required
+                  placeholder="default"
+                  value={namespace}
+                  onChange={(e) => setNamespace(e.target.value)}
+                />
+              </Field>
+              <Field label="Service" htmlFor="service" hint="optional">
+                <Input
+                  id="service"
+                  placeholder="payment-service"
+                  value={service}
+                  onChange={(e) => setService(e.target.value)}
+                />
+              </Field>
             </div>
-            <div>
-              <Label htmlFor="namespace">Namespace</Label>
-              <Input
-                id="namespace"
-                required
-                placeholder="default"
-                value={namespace}
-                onChange={(e) => setNamespace(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="service">Service (optional)</Label>
-              <Input
-                id="service"
-                placeholder="payment-service"
-                value={service}
-                onChange={(e) => setService(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="time_window">Time window (minutes)</Label>
+
+            <Field label="Time window" htmlFor="time_window" hint="minutes">
               <Input
                 id="time_window"
                 type="number"
@@ -89,17 +115,23 @@ export default function NewInvestigationPage() {
                 value={timeWindow}
                 onChange={(e) => setTimeWindow(Number(e.target.value))}
               />
+            </Field>
+
+            {error && <Banner tone="red">{error}</Banner>}
+
+            <div className="flex items-center justify-end border-t border-line-soft pt-4">
+              <Button type="submit" disabled={submitting || !query.trim()}>
+                {submitting ? (
+                  <>
+                    <Spinner /> Starting…
+                  </>
+                ) : (
+                  <>
+                    <Icon.Search size={15} /> Start investigation
+                  </>
+                )}
+              </Button>
             </div>
-
-            {error && (
-              <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
-              </p>
-            )}
-
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Starting…" : "Start Investigation"}
-            </Button>
           </form>
         </CardBody>
       </Card>
