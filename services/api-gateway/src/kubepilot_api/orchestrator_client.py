@@ -104,9 +104,7 @@ class InvestigationOrchestrator:
                     for node_name in chunk:
                         if not ttfb_logged:
                             # AgentOps: time-to-first-byte (trigger → first node output).
-                            ttfb_ms = int(
-                                (datetime.now(UTC) - started).total_seconds() * 1000
-                            )
+                            ttfb_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
                             log.info(
                                 "investigation_ttfb", incident_id=str(incident), ttfb_ms=ttfb_ms
                             )
