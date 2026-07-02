@@ -73,15 +73,25 @@ async def _run_all(scenarios: list[Scenario], router: LLMRouter) -> list[ScoreBr
 
 
 def main() -> int:
-    scenarios = load_scenarios()
+    from eval.harness.loader import load_heldout
+
     router = build_live_router()
 
+    scenarios = load_scenarios()
     print(f"Running {len(scenarios)} golden RCA scenarios (live LLM)...\n")
-    breakdowns = asyncio.run(_run_all(scenarios, router))
-    agg = aggregate(breakdowns)
-    print(render_report(agg))
+    golden = aggregate(asyncio.run(_run_all(scenarios, router)))
+    print(render_report(golden))
 
-    return 0 if agg.passes_gate else 1
+    # Held-out set — scored separately to detect overfitting to golden (§7).
+    heldout_scenarios = load_heldout()
+    if heldout_scenarios:
+        print(f"\nRunning {len(heldout_scenarios)} HELD-OUT scenarios (overfit check)...\n")
+        heldout = aggregate(asyncio.run(_run_all(heldout_scenarios, router)))
+        print(render_report(heldout))
+        gap = golden.mean_score - heldout.mean_score
+        print(f"\nGolden - held-out score gap: {gap:+.3f} (large positive ⇒ overfit risk)")
+
+    return 0 if golden.passes_gate else 1
 
 
 if __name__ == "__main__":
