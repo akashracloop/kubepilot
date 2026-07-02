@@ -36,6 +36,7 @@ import structlog
 from langgraph.graph import END, START, StateGraph
 
 from kubepilot_orch.agents import (
+    critic_agent,
     deployment_agent,
     finalize,
     kubernetes_agent,
@@ -73,6 +74,11 @@ class AgentDeps:
     # Phase 2 long-term memory. When present, a retrieval node runs before RCA and
     # the concluded incident is indexed at finalize.
     memory: MemoryRetriever | None = None
+    # Phase 3 critic. When True, a critic node runs between RCA and recommendation,
+    # producing an independent agreement score, a critic-adjusted confidence, and an
+    # escalate-to-human flag. Off by default so the minimal graph is unchanged; the
+    # api-gateway turns it on via config.
+    enable_critic: bool = False
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -151,6 +157,10 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         report = await rca_agent.run(state, llm=deps.llm)
         return rca_agent.to_state_update(report)
 
+    async def critic_node(state: InvestigationState) -> dict[str, Any]:
+        critique = await critic_agent.run(state, llm=deps.llm)
+        return critic_agent.to_state_update(critique)
+
     async def finalize_node(state: InvestigationState) -> dict[str, Any]:
         update = await finalize.finalize_node(state)
         if deps.memory is not None:
@@ -196,8 +206,16 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
     for name in specialists:
         graph.add_edge("supervisor", name)
         graph.add_edge(name, fan_in)
-    # rca → recommendation → finalize → END
-    graph.add_edge("rca", "recommendation")
+
+    # Phase 3 critic: an adversarial review between RCA and recommendation. When
+    # enabled, rca → critic → recommendation; otherwise rca → recommendation.
+    if deps.enable_critic:
+        graph.add_node("critic", critic_node)
+        graph.add_edge("rca", "critic")
+        graph.add_edge("critic", "recommendation")
+    else:
+        graph.add_edge("rca", "recommendation")
+    # recommendation → finalize → END
     graph.add_edge("recommendation", "finalize")
     graph.add_edge("finalize", END)
 
@@ -205,6 +223,7 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         "graph_built",
         specialists=specialists,
         memory=deps.memory is not None,
+        critic=deps.enable_critic,
         checkpointer=checkpointer is not None,
     )
     return graph.compile(checkpointer=checkpointer)

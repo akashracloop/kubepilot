@@ -93,6 +93,17 @@ def _build_user_message(state: InvestigationState) -> str:
     for i, rec in enumerate(rca.recommendations or []):
         parts.append(f"  {i + 1}. {rec}")
 
+    # Phase 3: the critic's unresolved concerns should shape the recommendations —
+    # e.g. add a verification step for an alternative cause it flagged.
+    if state.critique is not None and state.critique.concerns:
+        parts += ["", "Critic's concerns to address (weigh these when prioritizing):"]
+        parts += [f"  - {c}" for c in state.critique.concerns]
+        if state.critique.escalate_to_human:
+            parts.append(
+                "  NOTE: the critic flagged this finding for human review — prefer "
+                "diagnostic/verification steps over aggressive remediation."
+            )
+
     parts += [
         "",
         "Produce the structured Recommendation array now.",

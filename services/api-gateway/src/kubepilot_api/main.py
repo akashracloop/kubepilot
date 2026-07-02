@@ -72,6 +72,7 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
         mcp_tempo=mcp.client(Capability.TRACING) if mcp.has(Capability.TRACING) else None,
         mcp_ci=mcp.client(Capability.DEPLOYMENT) if mcp.has(Capability.DEPLOYMENT) else None,
         memory=_build_memory(settings, orch_settings) if settings.memory_enabled else None,
+        enable_critic=settings.critic_enabled,
     )
     return build_graph(deps, checkpointer=checkpointer)
 

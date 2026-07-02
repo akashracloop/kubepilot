@@ -18,6 +18,7 @@ class Role(StrEnum):
     ROUTING = "routing"
     ANALYSIS = "analysis"
     SUMMARIZATION = "summarization"
+    CRITIQUE = "critique"  # Phase 3: the critic agent that refutes/scores the RCA
 
 
 class ToolCall(BaseModel):

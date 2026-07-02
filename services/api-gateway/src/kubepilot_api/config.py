@@ -71,6 +71,11 @@ class ApiSettings(BaseSettings):
     # store when storage=postgres, else an in-process store (dev, non-persistent).
     memory_enabled: bool = True
 
+    # Phase 3 critic: an adversarial review between RCA and recommendation that
+    # produces an agreement score, a critic-adjusted confidence, and an
+    # escalate-to-human flag. On by default for Phase 3.
+    critic_enabled: bool = True
+
 
 def load_settings() -> ApiSettings:
     return ApiSettings()
