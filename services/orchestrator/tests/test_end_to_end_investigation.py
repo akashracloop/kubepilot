@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 from kubepilot_orch.agents import kubernetes_agent, logs_agent, metrics_agent, rca_agent
+from kubepilot_orch.checkpointing import open_checkpointer
 from kubepilot_orch.graph import AgentDeps, build_graph
 from kubepilot_orch.state import AgentOutput, Evidence, RCAReport, Severity
 from kubepilot_orch.testing import (
@@ -457,3 +458,55 @@ async def test_end_to_end_investigation_runs_specialists_in_parallel() -> None:
     # If reducer semantics broke, some agents' evidence would be missing.
     sources = {e.source_agent for e in final["evidence"]}
     assert {"kubernetes", "metrics", "logs"}.issubset(sources)
+
+
+@pytest.mark.asyncio
+async def test_checkpointer_persists_investigation_state() -> None:
+    """A checkpointer-backed graph run persists resumable state under its thread_id.
+
+    Exercises the checkpointer-ready compile path (graph.build_graph(checkpointer=))
+    + the per-investigation thread_id config the gateway uses. MemorySaver stands in
+    for the Postgres saver (identical interface); the Postgres backend is covered by
+    an integration test.
+    """
+    *_, dispatcher = _build_dispatcher()
+
+    deps = AgentDeps(
+        llm=build_router(dispatcher),  # type: ignore[arg-type]
+        mcp_k8s=build_mcp_client(_k8s_handler, server_name="mcp-k8s"),
+        mcp_prom=build_mcp_client(_prom_handler, server_name="mcp-prom"),
+        mcp_loki=build_mcp_client(_loki_handler, server_name="mcp-loki"),
+    )
+    incident_id = uuid.uuid4()
+    config = {"configurable": {"thread_id": str(incident_id)}}
+
+    try:
+        async with open_checkpointer("memory", "") as checkpointer:
+            graph = build_graph(deps, checkpointer=checkpointer)
+            await graph.ainvoke(
+                {
+                    "incident_id": incident_id,
+                    "query": "why is payment-service failing?",
+                    "namespace": "prod",
+                    "service": "payment-service",
+                    "started_at": datetime.now(UTC),
+                },
+                config=config,
+            )
+
+            # The checkpoint is retrievable by thread_id and holds the terminal state.
+            snapshot = await graph.aget_state(config)
+            assert snapshot.values["current_step"] == "completed"
+            assert snapshot.values["rca"] is not None
+            assert snapshot.values["rca"].root_cause_category == "OOMKilled"
+    finally:
+        await deps.mcp_k8s.aclose()
+        await deps.mcp_prom.aclose()
+        await deps.mcp_loki.aclose()
+
+
+@pytest.mark.asyncio
+async def test_open_checkpointer_rejects_unknown_backend() -> None:
+    with pytest.raises(ValueError, match="Unknown checkpointer backend"):
+        async with open_checkpointer("datadog", "postgresql://x"):
+            pass
