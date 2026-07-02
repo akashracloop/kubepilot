@@ -49,6 +49,7 @@ from kubepilot_orch.agents import (
     supervisor,
     tracing_agent,
 )
+from kubepilot_orch.calibration import IsotonicCalibrator
 from kubepilot_orch.knowledge.retriever import KnowledgeRetriever
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.mcp.client import MCPClient
@@ -80,6 +81,10 @@ class AgentDeps:
     # RCA (beside memory) and injects owner/dependency/SLO context into
     # state.knowledge_context.
     knowledge: KnowledgeRetriever | None = None
+    # Phase 3 confidence calibrator (fit from eval history). When present + fitted,
+    # finalize maps the raw RCA confidence to an empirically-calibrated value,
+    # overriding the critic's interim calibrated_confidence.
+    calibrator: IsotonicCalibrator | None = None
     # Phase 3 critic. When True, a critic node runs between RCA and recommendation,
     # producing an independent agreement score, a critic-adjusted confidence, and an
     # escalate-to-human flag. Off by default so the minimal graph is unchanged; the
@@ -174,6 +179,11 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
 
     async def finalize_node(state: InvestigationState) -> dict[str, Any]:
         update = await finalize.finalize_node(state)
+        # Empirically calibrate the raw RCA confidence when a fitted calibrator is
+        # wired in. This is the authoritative calibrated_confidence — it overrides
+        # the critic's interim value (W2), which only tempered by evidence gaps.
+        if deps.calibrator is not None and deps.calibrator.is_fitted and state.rca is not None:
+            update["calibrated_confidence"] = deps.calibrator.calibrate(state.rca.confidence)
         if deps.memory is not None:
             # Index the concluded incident so future investigations can recall it.
             await memory_agent.index_incident(state, retriever=deps.memory)

@@ -81,6 +81,11 @@ class ApiSettings(BaseSettings):
     # graph would just add a no-op node.
     knowledge_enabled: bool = False
 
+    # Phase 3 confidence calibrator: path to a JSON file holding a trained isotonic
+    # calibrator (IsotonicCalibrator.to_dict()). When set + readable, finalize maps
+    # the raw RCA confidence to an empirically-calibrated value. None → no calibration.
+    calibrator_path: str | None = None
+
 
 def load_settings() -> ApiSettings:
     return ApiSettings()

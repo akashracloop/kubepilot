@@ -73,6 +73,7 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
         mcp_ci=mcp.client(Capability.DEPLOYMENT) if mcp.has(Capability.DEPLOYMENT) else None,
         memory=_build_memory(settings, orch_settings) if settings.memory_enabled else None,
         knowledge=_build_knowledge(settings) if settings.knowledge_enabled else None,
+        calibrator=_build_calibrator(settings),
         enable_critic=settings.critic_enabled,
     )
     return build_graph(deps, checkpointer=checkpointer)
@@ -122,6 +123,22 @@ def _build_knowledge(settings: ApiSettings) -> Any:
         else InMemoryKnowledgeStore()
     )
     return KnowledgeRetriever(store)
+
+
+def _build_calibrator(settings: ApiSettings) -> Any:
+    """Load a trained isotonic calibrator from disk, or None if unset/absent (Phase 3)."""
+    import json
+    from pathlib import Path
+
+    from kubepilot_orch.calibration import IsotonicCalibrator
+
+    if not settings.calibrator_path:
+        return None
+    path = Path(settings.calibrator_path)
+    if not path.exists():
+        log.warning("calibrator_missing", path=str(path))
+        return None
+    return IsotonicCalibrator.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
 def _default_repository(settings: ApiSettings) -> InvestigationRepository:
