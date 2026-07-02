@@ -52,6 +52,14 @@ class InvestigationOrchestrator:
         # Track running tasks so the FastAPI shutdown hook can cancel/wait on them.
         self._tasks: dict[UUID, asyncio.Task[None]] = {}
 
+    def set_graph(self, compiled_graph: Any) -> None:
+        """Hot-swap the compiled graph (used when UI settings change rebuild it).
+
+        In-flight investigations keep the graph object they captured; new ones use
+        the swapped-in graph.
+        """
+        self._graph = compiled_graph
+
     def start_investigation(self, state: InvestigationState) -> None:
         """Spawn a background task that runs the graph for the given state.
 
