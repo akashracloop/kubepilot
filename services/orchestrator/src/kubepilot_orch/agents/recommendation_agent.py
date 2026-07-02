@@ -13,6 +13,7 @@ import structlog
 from pydantic import BaseModel, Field, ValidationError
 
 from kubepilot_orch.agents.prompt_registry import resolve_prompt
+from kubepilot_orch.guardrails import enforce
 from kubepilot_orch.llm.base import Message, Role
 from kubepilot_orch.llm.parsing import strip_code_fences
 from kubepilot_orch.llm.router import LLMRouter
@@ -66,10 +67,16 @@ async def run(state: InvestigationState, *, llm: LLMRouter) -> list[Recommendati
             return _fallback_from_rca(state)
 
     recs = recs[:4]
-    # Defensive: any write-shaped command must require approval, even if the LLM said otherwise.
-    for r in recs:
-        if _has_write_command(r) and not r.requires_approval:
-            r.requires_approval = True
+    # Guardrail (W10): drop destructive/forbidden recommendations and force approval
+    # on any remaining write command. Blocked suggestions are logged for AgentOps.
+    result = enforce(recs)
+    if result.blocked_any:
+        log.warning(
+            "recommendations_guardrail",
+            incident=str(state.incident_id),
+            violations=[{"kind": v.kind, "title": v.title} for v in result.violations],
+        )
+    recs = result.kept
     # Stable ordering by priority for downstream consumers.
     recs.sort(key=lambda r: (r.priority, r.title))
     return recs
@@ -112,32 +119,6 @@ def _build_user_message(state: InvestigationState) -> str:
         "Substitute real namespace + service names — no <PLACEHOLDERS>.",
     ]
     return "\n".join(parts)
-
-
-def _has_write_command(rec: Recommendation) -> bool:
-    """Heuristic: any kubectl/helm command that mutates state requires approval."""
-    write_verbs = (
-        " apply ",
-        " delete ",
-        " create ",
-        " patch ",
-        " replace ",
-        " scale ",
-        " rollout ",
-        " edit ",
-        " drain ",
-        " cordon ",
-        " uncordon ",
-        " evict ",
-        " rollback",
-        " upgrade ",
-    )
-    for cmd in rec.commands:
-        # Pad with spaces so we match verbs in context.
-        padded = " " + cmd.lower() + " "
-        if any(verb in padded for verb in write_verbs):
-            return True
-    return False
 
 
 def _fallback_from_rca(state: InvestigationState) -> list[Recommendation]:
