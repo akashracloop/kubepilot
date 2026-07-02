@@ -65,11 +65,15 @@ def test_v1_fixture_loads_and_fills_v2_defaults(fixtures_dir: Path) -> None:
 
 
 def test_v2_fixture_loads_under_current_schema(fixtures_dir: Path) -> None:
-    """The v2 fixture-replay guarantee: a v2 checkpoint loads with its new fields intact."""
+    """The v2 fixture-replay guarantee: a v2 checkpoint loads with its new fields intact.
+
+    Under v3 code the v2 blob is migrated (version-stamped) to current; the v2
+    payload survives and the additive v3 fields fill from their defaults.
+    """
     blob = _load_fixture(fixtures_dir, "v2_sample.json")
     state = load_checkpoint(blob)
 
-    assert state.schema_version == 2
+    assert state.schema_version == CURRENT_SCHEMA_VERSION  # migrated/stamped to current
     assert state.rca is not None
     assert state.rca.root_cause_category == "LatencyRegression"
     assert len(state.memory_context) == 1
@@ -79,6 +83,32 @@ def test_v2_fixture_loads_under_current_schema(fixtures_dir: Path) -> None:
     assert state.timeline[0].label == "deploy_started"
     assert state.timeline[1].severity is Severity.ERROR
     assert state.total_tokens_used == 1800
+    # Additive v3 fields default to empty when loading an older checkpoint.
+    assert state.critique is None
+    assert state.knowledge_context == []
+    assert state.calibrated_confidence is None
+    assert state.prompt_versions == {}
+
+
+def test_v3_fixture_loads_under_current_schema(fixtures_dir: Path) -> None:
+    """The v3 fixture-replay guarantee: a v3 checkpoint loads with its new fields intact."""
+    blob = _load_fixture(fixtures_dir, "v3_sample.json")
+    state = load_checkpoint(blob)
+
+    assert state.schema_version == CURRENT_SCHEMA_VERSION
+    # v2 payload still present.
+    assert state.rca is not None
+    assert len(state.timeline) == 3
+    # v3 additive fields carry their persisted values.
+    assert state.critique is not None
+    assert state.critique.agreement == pytest.approx(0.9)
+    assert state.critique.adjusted_confidence == pytest.approx(0.85)
+    assert state.critique.escalate_to_human is False
+    assert len(state.knowledge_context) == 1
+    assert state.knowledge_context[0].service == "checkout-service"
+    assert state.knowledge_context[0].dependencies == ["payments-db", "inventory-service"]
+    assert state.calibrated_confidence == pytest.approx(0.85)
+    assert state.prompt_versions == {"rca": "v2", "critic": "v1"}
 
 
 def test_roundtrip_preserves_state(fixtures_dir: Path) -> None:

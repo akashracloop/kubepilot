@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 # Bump this constant when state shape changes. Every step in between needs a
 # MIGRATIONS entry (trivial version-stamp for additive bumps; real transform for
 # breaking ones) — enforced by test_migration_registry_is_complete.
-CURRENT_SCHEMA_VERSION: int = 2
+CURRENT_SCHEMA_VERSION: int = 3
 
 
 def _merge_dicts(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
@@ -127,6 +127,35 @@ class TimelineEntry(BaseModel):
     severity: Severity = Severity.INFO
 
 
+class Critique(BaseModel):
+    """The critic agent's assessment of the RCA (Phase 3).
+
+    Runs after RCA, before finalize. Low ``agreement`` (or unresolved ``concerns``)
+    lowers ``adjusted_confidence`` and can set ``escalate_to_human``.
+    """
+
+    agreement: float = Field(ge=0.0, le=1.0, default=1.0)  # how much the critic backs the RCA
+    concerns: list[str] = Field(default_factory=list)  # missing signals / alternative causes
+    adjusted_confidence: float | None = None  # critic's suggested confidence
+    escalate_to_human: bool = False  # true when the finding is too uncertain to trust
+
+
+class ServiceKnowledge(BaseModel):
+    """A fact retrieved from the cluster knowledge graph (Phase 3).
+
+    Injected into ``InvestigationState.knowledge_context`` so the RCA agent knows
+    who owns a service, what it depends on, and its SLOs.
+    """
+
+    service: str
+    owner: str | None = None  # team / person
+    dependencies: list[str] = Field(default_factory=list)  # services this one calls
+    dependents: list[str] = Field(default_factory=list)  # services that call this one
+    slos: dict[str, Any] = Field(default_factory=dict)  # e.g. {"availability": "99.9%"}
+    last_deploy: str | None = None  # version / timestamp of the most recent deploy
+    notes: str | None = None
+
+
 class InvestigationState(BaseModel):
     """Top-level LangGraph state for a single investigation.
 
@@ -168,6 +197,15 @@ class InvestigationState(BaseModel):
     memory_context: list[PastIncident] = Field(default_factory=list)  # retrieved past incidents
     timeline: list[TimelineEntry] = Field(default_factory=list)  # ordered incident chronology
 
+    # Phase 3 additive fields (schema v3). All default empty/None so v1/v2
+    # checkpoints deserialize cleanly (the v2->v3 migration only stamps the version).
+    critique: Critique | None = None  # critic-agent assessment of the RCA
+    knowledge_context: list[ServiceKnowledge] = Field(
+        default_factory=list
+    )  # cluster knowledge graph
+    calibrated_confidence: float | None = None  # RCA confidence mapped to empirical accuracy
+    prompt_versions: dict[str, str] = Field(default_factory=dict)  # prompt name -> version used
+
     # Trace metadata
     started_at: datetime
     finished_at: datetime | None = None
@@ -197,8 +235,16 @@ def _v1_to_v2(blob: dict[str, Any]) -> dict[str, Any]:
     return blob
 
 
+def _v2_to_v3(blob: dict[str, Any]) -> dict[str, Any]:
+    """v2 -> v3: additive only (critique, knowledge_context, calibrated_confidence,
+    prompt_versions). New fields fill from defaults; we only stamp the version."""
+    blob = {**blob, "schema_version": 3}
+    return blob
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _v1_to_v2,
+    2: _v2_to_v3,
 }
 
 
