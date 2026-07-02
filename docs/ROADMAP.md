@@ -75,6 +75,7 @@ All Phase 1 Definition of Done items in [PHASE_1_PLAN.md §11](./PHASE_1_PLAN.md
 # Phase 2 — Production-Ready Analysis
 
 **Release:** `v0.2.x`
+**Detail:** Full implementation plan in [PHASE_2_PLAN.md](./PHASE_2_PLAN.md).
 
 ## Goal
 
