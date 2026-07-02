@@ -76,6 +76,19 @@ webUi:
   apiBaseUrl: ""
 
 # -----------------------------------------------------------------------------
+# Slack bot (Phase 2) — off by default. Socket Mode, so no ingress needed.
+# -----------------------------------------------------------------------------
+slackBot:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: kubepilot-slack
+    tag: 0.1.0-dev
+  defaultNamespace: prod
+  # Secret with keys `bot_token` (xoxb-...) and `app_token` (xapp-..., Socket Mode).
+  tokenSecretRef: kubepilot-slack-tokens
+
+# -----------------------------------------------------------------------------
 # MCP servers
 # -----------------------------------------------------------------------------
 mcp:

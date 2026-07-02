@@ -1,0 +1,64 @@
+{{- if .Values.slackBot.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-slack-bot
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: slack-bot
+spec:
+  replicas: {{ .Values.slackBot.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kubepilot.name" . }}
+      app.kubernetes.io/component: slack-bot
+  template:
+    metadata:
+      labels:
+        {{- include "kubepilot.labels" . | nindent 8 }}
+        app.kubernetes.io/component: slack-bot
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10006
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: slack-bot
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.slackBot.image.repository }}:{{ .Values.slackBot.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: KUBEPILOT_SLACK_API_URL
+              value: "http://{{ include "kubepilot.fullname" . }}-api-gateway.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.apiGateway.service.port }}"
+            - name: KUBEPILOT_SLACK_DEFAULT_NAMESPACE
+              value: {{ .Values.slackBot.defaultNamespace | quote }}
+            - name: KUBEPILOT_SLACK_SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.slackBot.tokenSecretRef }}
+                  key: bot_token
+            - name: KUBEPILOT_SLACK_SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.slackBot.tokenSecretRef }}
+                  key: app_token
+            # Reuse the gateway API key so the bot inherits its namespace scope.
+            - name: KUBEPILOT_SLACK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.apiGateway.auth.secretName }}
+                  key: api_key
+                  optional: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+{{- end }}

@@ -16,6 +16,8 @@ members = [
     "services/mcp-loki",
     "services/mcp-tempo",
     "services/mcp-ci",
+    "services/slack-bot",
+    "services/cli",
 ]
 
 [tool.uv]
