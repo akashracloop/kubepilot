@@ -9,9 +9,13 @@ multi-agent system investigates production incidents by correlating signals acro
 Prometheus, Loki, Tempo, and CI/CD, and produces a root-cause report with evidence + confidence.
 Python 3.12, `uv` workspace of services + a Next.js Web UI, shipped as one Helm chart.
 
-**Phase discipline (binding):** the platform is read-only through Phase 3. No code path writes to the
-cluster until Phase 4 (a separate `k8s-write-mcp`, HITL-gated). Don't add write capability, and defer
-Phase 2+/3+ scope creep — see `docs/reference/roadmap.md` and the phase plans.
+**Phase discipline (binding):** read-only through Phase 3; **Phase 4 adds writes, but they are OFF by
+default and HITL-gated.** The write path exists only when `remediation.enabled=true`: a separate
+`mcp-k8s-write` server (curated tools, dry-run unless `applyEnabled=true`) with its own least-privilege
+ClusterRole, reached only through policy → blast-radius → human-approval → executor (kill-switch +
+audit) → auto-rollback. Never add a write outside that gate; never widen the write ClusterRole beyond
+`mcp_k8s_write.safety.required_rbac()` (a rendered-chart test enforces it). See
+`docs/reference/roadmap.md` and the phase plans.
 
 ## Commands
 
@@ -80,6 +84,20 @@ registry** (`agents/prompt_registry.py`) powers A/B + rollback (`prompt_active_v
 audit export (`audit.py`). **mcp-datadog** is a reference observability adapter mapping Datadog →
 curated capability shapes. Eval harness gains calibration/drift/prompt-A/B/debate + a release gate
 (`eval/harness/{calibration,drift,eval_gate,prompt_ab,debate_eval}.py`, `.github/workflows/eval-gate.yml`).
+
+**Phase 4 additions (gated WRITES, off by default).** State v4 adds `remediation_plan`/`approvals`/
+`executions`/`rollbacks`/`remediation_outcome` (additive; v1–v4 fixture-replay). When
+`enable_remediation`, the graph runs `recommendation → remediation → [interrupt_before execute] →
+execute_remediation → finalize`; the interrupt IS the HITL gate (LangGraph `interrupt_before` +
+checkpointer resume). The `remediation/` package is the gated path: `catalog` (write surface),
+`remediation_agent` (executable plan, catalog-filtered), `policy` (default-deny YAML engine +
+`policies/*.yaml`), `blast_radius`, `approval` (approver RBAC + status/expiry), `executor` (kill-switch
+→ policy → blast cap → `mcp-k8s-write` invoke → audit; process-global `set_kill_switch`), `rollback`
+(inverse actions on regression), `validation` (re-check → close/reopen), `selfheal` (opt-in per
+pattern, still fully gated). Approve/reject + kill-switch live in `api-gateway/.../routes/approvals.py`.
+`mcp-k8s-write` is a *separate* server (curated tools, dry-run unless `KUBEPILOT_WRITE_APPLY_ENABLED`)
+with a Helm least-privilege ClusterRole matching `safety.required_rbac()` + a NetworkPolicy, all gated
+on `remediation.enabled`; the `remediation-e2e.yml` kind sandbox is the only place real writes run.
 
 **MCP servers speak a REST contract, not stdio MCP.** Every server (`mcp-k8s/prom/loki/tempo/ci`)
 exposes `GET /mcp/tools`, `POST /mcp/invoke`, `GET /mcp/health` and returns **curated** response models

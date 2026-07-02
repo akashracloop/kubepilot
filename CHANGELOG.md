@@ -36,6 +36,29 @@ Phase 3** — no code path writes to the cluster (writes are Phase 4).
   binding for any unconfigured role, and `critique` is added to all values
   profiles.
 
+## [0.4.0] — Phase 4: autonomous operations, HITL-gated writes (not yet tagged)
+
+**Crosses the read→write bright line — OFF by default.** The write path only
+exists when `remediation.enabled=true`, and even then is dry-run until
+`applyEnabled=true`.
+
+### Added
+- **Remediation pipeline**: RCA → executable plan (curated write catalog) →
+  default-deny policy → blast-radius estimate → **HITL approval** (graph
+  interrupt-before-execute) → gated execution → validation → close/auto-rollback.
+- **`mcp-k8s-write`**: a separate write MCP with a curated, finite, reversible-
+  leaning tool surface (rollout undo/restart, scale, restart-pod, cordon/uncordon,
+  patch-image, edit-configmap), dry-run on every tool, its own least-privilege
+  ClusterRole (rendered-chart contract test) + NetworkPolicy.
+- **Execution policy engine** (default-deny) + 5 reference policies; **blast-radius
+  estimator**; **approver RBAC** (operator/admin tiers) + expiry; **execution
+  engine** with per-action audit + a global **kill switch**; **auto-rollback** of
+  reversible actions on regression; **post-remediation validation** (re-check →
+  close/reopen); **opt-in-per-pattern self-healing** (still fully gated).
+- Approval **UI** (card + Approve/Reject) and **Slack** approve/reject buttons;
+  approve/reject/kill-switch API; state schema **v4** (additive) with v1–v4
+  fixture-replay; a **kind e2e** sandbox (the only place real writes run).
+
 ## [0.3.0] — Phase 3: enterprise-grade (not yet tagged)
 
 ### Added

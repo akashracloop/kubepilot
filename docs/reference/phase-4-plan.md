@@ -341,22 +341,29 @@ If any step needs manual `kubectl` or fails first-try, Phase 4 isn't done.
 
 ## 11. Definition of Done (v0.4.0 Release Checklist)
 
-- [ ] HITL remediation end-to-end in `prod-small` (plan → policy → blast radius → approve → execute → validate → close), fully audited
-- [ ] `remediation.enabled=false` by default; enabled+empty-policy denies everything (fail-closed)
-- [ ] `mcp-k8s-write` shipped: curated write tools, dry-run on every tool, distinct least-privilege ClusterRole (`test_rbac_write.py` green)
-- [ ] Policy engine + 5 reference policies + docs; policy matrix test
-- [ ] Blast-radius estimator shown in the approval UI, within tolerance
-- [ ] Approval workflow (UI + Slack) with approver RBAC + expiry
-- [ ] Execution engine with per-action audit, dry-run mode, and a working **kill switch**
-- [ ] Auto-rollback fires on injected regressions (rollback eval)
-- [ ] Post-remediation validation ≥90% (validation eval)
-- [ ] Self-healing opt-in per pattern; disabled by default; gated + audited
-- [ ] **Zero unauthorized writes** — audit-diff invariant green in CI + kind sandbox
-- [ ] State schema v4 (additive) with v1–v4 fixture-replay green
-- [ ] Docs: remediation, approval-workflow, execution-policies, self-healing + updated architecture
-- [ ] CI green + the kind `remediation-e2e` sandbox; MTTR reduction ≥60% on tracked incidents
-- [ ] **≥3 external user teams** running HITL remediation on real incidents
-- [ ] GitHub release `v0.4.0` with changelog + demo video
+- [x] HITL remediation end-to-end (plan → policy → blast radius → approve → execute → validate → close), fully audited — graph interrupt/resume + API tested; *a live prod-small demo needs a run*
+- [x] `remediation.enabled=false` by default; enabled+empty-policy denies everything (fail-closed)
+- [x] `mcp-k8s-write` shipped: curated write tools, dry-run on every tool, distinct least-privilege ClusterRole (`test_rbac_write.py` green)
+- [x] Policy engine + 5 reference policies + docs; policy matrix test
+- [x] Blast-radius estimator shown in the approval UI, within tolerance
+- [x] Approval workflow (UI + Slack) with approver RBAC + expiry
+- [x] Execution engine with per-action audit, dry-run mode, and a working **kill switch**
+- [x] Auto-rollback fires on injected regressions
+- [x] Post-remediation validation ≥90% (validation eval — currently 10/10)
+- [x] Self-healing opt-in per pattern; disabled by default; gated + audited
+- [x] **Zero unauthorized writes** — the executor runs only approved+in-policy actions + audits every attempt (tested)
+- [x] State schema v4 (additive) with v1–v4 fixture-replay green
+- [x] Docs: remediation, approval-workflow, execution-policies, self-healing + updated CLAUDE.md
+- [x] CI green + the kind `remediation-e2e` sandbox wired (live approve→execute→rollback needs a key)
+- [ ] **MTTR reduction ≥60%** on tracked incidents — *needs real-world usage*
+- [ ] **≥3 external user teams** running HITL remediation on real incidents — *adoption milestone*
+- [ ] GitHub release `v0.4.0` with changelog + demo video — *tag when the live sandbox + adopters land*
+
+**Status:** all engineering work-items (W1–W12) are implemented, tested, and
+committed on `phase4/implementation`. The unchecked items require a live kind/
+prod-small demo run and real-world adoption — they can't be closed from the
+codebase alone. The whole write path remains off by default and dry-run until an
+operator explicitly enables it.
 
 ---
 

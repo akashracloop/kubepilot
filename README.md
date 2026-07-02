@@ -117,7 +117,7 @@ These decisions are binding through the read-only phases. See [IDEA.md](IDEA.md)
 | 1 | MVP — read-only RCA across k8s/Prom/Loki | ✅ Implemented |
 | 2 | Production: MCP adapters, memory, timeline, tracing/CI, Slack, CLI | ✅ Implemented |
 | 3 | Enterprise: critic, knowledge graph, calibration, eval gate, guardrails, RBAC v2, Datadog | ✅ Implemented (pre-`v0.3.0`) |
-| 4 | Autonomous: **writes** — HITL-gated remediation, auto-rollback, self-healing | ⏳ Planned |
+| 4 | Autonomous: **writes** — HITL-gated remediation, auto-rollback, self-healing | ✅ Implemented (off by default, pre-`v0.4.0`) |
 
 > **The read/write bright line:** KubePilot writes nothing to your cluster through Phase 3. RBAC grants only `get/list/watch`, `mcp-k8s` exposes only read tools, and a guardrail blocks any destructive recommendation. Writes arrive in Phase 4 behind a separate `k8s-write-mcp` and human-in-the-loop approval.
 
