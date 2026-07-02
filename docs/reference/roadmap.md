@@ -166,6 +166,7 @@ Make KubePilot trustworthy enough that enterprises put it in front of paying cus
 # Phase 4 — Autonomous Kubernetes Operations
 
 **Release:** `v0.4.x`
+**Detail:** Full implementation plan in [phase-4-plan.md](phase-4-plan.md).
 
 ## Goal
 
