@@ -84,8 +84,27 @@ def _default_compiled_graph(
         calibrator=_build_calibrator(settings),
         enable_critic=settings.critic_enabled,
         timeline_llm_labels=settings.timeline_llm_labels,
+        enable_remediation=settings.remediation_enabled,
+        mcp_write=_build_write_client(settings) if settings.remediation_enabled else None,
+        policy=_build_policy(settings) if settings.remediation_enabled else None,
     )
     return build_graph(deps, checkpointer=checkpointer)
+
+
+def _build_write_client(settings: ApiSettings) -> Any:
+    """Build the mcp-k8s-write client (Phase 4). Only used when remediation is on."""
+    from kubepilot_orch.mcp.client import MCPClient
+
+    return MCPClient(server_name="mcp-k8s-write", base_url=settings.remediation_write_url)
+
+
+def _build_policy(settings: ApiSettings) -> Any:
+    """Load the execution policy — operator override, else the reference set (default-deny)."""
+    from kubepilot_orch.remediation.policy import default_policies, load_policies
+
+    if settings.remediation_policy_path:
+        return load_policies(settings.remediation_policy_path)
+    return default_policies()
 
 
 def _build_memory(settings: ApiSettings, orch_settings: Any) -> Any:
@@ -268,8 +287,14 @@ def build_app(
         allow_headers=["*"],
     )
 
+    principal_dep = make_principal_dep(settings)
     app.include_router(health_router)
-    app.include_router(make_investigations_router(principal_dep=make_principal_dep(settings)))
+    app.include_router(make_investigations_router(principal_dep=principal_dep))
+    # Phase 4: HITL remediation approval + the global kill switch (RBAC + audited).
+    from kubepilot_api.routes.approvals import make_approval_router, make_kill_switch_router
+
+    app.include_router(make_approval_router(principal_dep=principal_dep))
+    app.include_router(make_kill_switch_router(principal_dep=principal_dep))
 
     return app
 

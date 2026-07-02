@@ -109,6 +109,38 @@ def test_v3_fixture_loads_under_current_schema(fixtures_dir: Path) -> None:
     assert state.knowledge_context[0].dependencies == ["payments-db", "inventory-service"]
     assert state.calibrated_confidence == pytest.approx(0.85)
     assert state.prompt_versions == {"rca": "v2", "critic": "v1"}
+    # Additive v4 (remediation) fields default to empty when loading an older checkpoint.
+    assert state.remediation_plan is None
+    assert state.approvals == []
+    assert state.executions == []
+    assert state.rollbacks == []
+    assert state.remediation_outcome is None
+
+
+def test_v4_fixture_loads_under_current_schema(fixtures_dir: Path) -> None:
+    """The v4 fixture-replay guarantee: a v4 checkpoint loads with its remediation
+    fields intact (proposed plan, approval, execution, outcome)."""
+    blob = _load_fixture(fixtures_dir, "v4_sample.json")
+    state = load_checkpoint(blob)
+
+    assert state.schema_version == CURRENT_SCHEMA_VERSION
+    # Earlier-version payload still present.
+    assert state.rca is not None
+    assert state.critique is not None
+    # v4 remediation fields carry their persisted values.
+    assert state.remediation_plan is not None
+    assert len(state.remediation_plan.actions) == 1
+    action = state.remediation_plan.actions[0]
+    assert action.tool == "rollout_undo"
+    assert action.reversibility == "reversible"
+    assert action.estimated_blast_radius is not None
+    assert action.estimated_blast_radius.dependents == ["web-frontend"]
+    assert len(state.approvals) == 1
+    assert state.approvals[0].decision == "approved"
+    assert state.approvals[0].approver_role == "operator"
+    assert len(state.executions) == 1
+    assert state.executions[0].status == "succeeded"
+    assert state.remediation_outcome == "closed"
 
 
 def test_roundtrip_preserves_state(fixtures_dir: Path) -> None:

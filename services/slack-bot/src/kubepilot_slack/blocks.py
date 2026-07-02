@@ -53,6 +53,82 @@ def progress_message(event_type: str, node: str | None = None) -> str:
     return f":hourglass_flowing_sand: {pretty}…"
 
 
+# action_id encoding: "<decision>:<incident_id>:<action_index>" so the button
+# handler can route an approve/reject back to the API without extra state.
+def encode_action_id(decision: str, incident_id: str, action_index: int) -> str:
+    return f"{decision}:{incident_id}:{action_index}"
+
+
+def decode_action_id(action_id: str) -> tuple[str, str, int]:
+    decision, incident_id, index = action_id.split(":", 2)
+    return decision, incident_id, int(index)
+
+
+def approval_card(incident_id: str, approval: dict[str, Any]) -> list[dict[str, Any]]:
+    """Block Kit card for a pending remediation plan, with approve/reject buttons.
+
+    ``approval`` is the ``GET /investigations/{id}/approval`` response. Each
+    curated action gets approve + reject buttons; the blast radius and
+    reversibility are shown so the approver sees the impact.
+    """
+    status = str(approval.get("status", "unknown"))
+    actions = approval.get("actions", [])
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": ":rotating_light: Remediation approval",
+                "emoji": True,
+            },
+        },
+        _section(f"*Status:* {status}"),
+    ]
+    if not actions:
+        blocks.append(_section("_No remediation actions to approve._"))
+        return blocks
+
+    for a in actions:
+        blocks.append(_section(_action_text(a)))
+        blocks.append(_approval_buttons(incident_id, int(a["index"])))
+    return blocks
+
+
+def _action_text(action: dict[str, Any]) -> str:
+    br = action.get("blast_radius") or {}
+    impact = (
+        f" · ~{br.get('pods_affected')} pod(s), ~{br.get('traffic_percent')}% traffic" if br else ""
+    )
+    deps = f" · dependents: {', '.join(br.get('dependents', []))}" if br.get("dependents") else ""
+    return (
+        f"*{action['tool']}* `{action['target']}` in `{action['namespace']}` "
+        f"({action['reversibility']}, approve:{action['approval_tier']}){impact}{deps}\n"
+        f"{action.get('rationale', '')}"
+    )
+
+
+def _approval_buttons(incident_id: str, index: int) -> dict[str, Any]:
+    return {
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "style": "primary",
+                "text": {"type": "plain_text", "text": "Approve", "emoji": True},
+                "action_id": encode_action_id("approve", incident_id, index),
+                "value": encode_action_id("approve", incident_id, index),
+            },
+            {
+                "type": "button",
+                "style": "danger",
+                "text": {"type": "plain_text", "text": "Reject", "emoji": True},
+                "action_id": encode_action_id("reject", incident_id, index),
+                "value": encode_action_id("reject", incident_id, index),
+            },
+        ],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Block builders
 # ---------------------------------------------------------------------------

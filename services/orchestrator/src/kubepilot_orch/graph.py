@@ -48,6 +48,7 @@ from kubepilot_orch.agents import (
     metrics_agent,
     rca_agent,
     recommendation_agent,
+    remediation_agent,
     supervisor,
     tracing_agent,
 )
@@ -96,6 +97,22 @@ class AgentDeps:
     # Optional LLM pass to polish timeline labels at finalize (ordering untouched).
     # Off by default — deterministic labels are the reliable baseline.
     timeline_llm_labels: bool = False
+    # Phase 4 remediation. When True, a remediation node proposes an executable
+    # plan after recommendation, and the graph **interrupts before executing** it
+    # (HITL approval). Off by default — the whole write path is opt-in. Real
+    # execution requires ``mcp_write`` (W7); in W5 the execute node resolves the
+    # approval outcome only.
+    enable_remediation: bool = False
+    mcp_write: MCPClient | None = None
+    # Execution policy (default-deny). Required for any action to actually run;
+    # without it (or without mcp_write) the execute node resolves the approval
+    # outcome but performs no writes.
+    policy: Any | None = None  # RemediationPolicy | None
+    # Optional post-remediation signal fetch: (state) -> (before, after) signal
+    # snapshots. When provided, the execute node validates the fix (W9) and
+    # auto-rolls-back reversible actions on a regression (W8). Without it, the
+    # outcome is closed unless an execution failed.
+    remediation_signal_fn: Any | None = None
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -214,6 +231,65 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         )
         return update
 
+    async def remediation_node(state: InvestigationState) -> dict[str, Any]:
+        plan = await remediation_agent.run(state, llm=deps.llm)
+        update = remediation_agent.to_state_update(plan)
+        update["prompt_versions"] = _prompt_version(
+            remediation_agent.AGENT_NAME, remediation_agent.PROMPT_NAME, state
+        )
+        return update
+
+    async def execute_remediation_node(state: InvestigationState) -> dict[str, Any]:
+        # The graph interrupts BEFORE this node (interrupt_before below) so a human
+        # can approve/reject; the API records the decision into the checkpointed
+        # state, then the run resumes here.
+        from kubepilot_orch.remediation import approval, executor
+
+        plan = state.remediation_plan
+        if plan is None or not plan.actions:
+            return {"current_step": "remediation_skipped", "completed_agents": ["remediation_exec"]}
+        status = approval.plan_status(plan, state.approvals, generated_at=plan.generated_at)
+
+        # Only an approved plan with an executor + policy wired in actually runs.
+        # Anything else (rejected/expired/pending, or no executor) resolves the
+        # outcome without any write.
+        if status != "approved" or deps.mcp_write is None or deps.policy is None:
+            return {
+                "remediation_outcome": status,
+                "current_step": "remediation_resolved",
+                "completed_agents": ["remediation_exec"],
+            }
+
+        records = await executor.execute_plan(
+            plan, state.approvals, mcp_write=deps.mcp_write, policy=deps.policy
+        )
+        update: dict[str, Any] = {
+            "executions": records,
+            "current_step": "remediation_executed",
+            "completed_agents": ["remediation_exec"],
+        }
+        failed = any(r.status == "failed" for r in records)
+        if failed:
+            update["remediation_outcome"] = "reopened"
+            return update
+
+        # W9: validate the fix against post-remediation signals; auto-rollback +
+        # reopen on regression, close on improvement. Without a signal fetcher we
+        # can only conclude the writes succeeded.
+        if deps.remediation_signal_fn is not None:
+            from kubepilot_orch.remediation import validation
+
+            before, after = await deps.remediation_signal_fn(state)
+            result = await validation.finalize_remediation(
+                records, before, after, mcp_write=deps.mcp_write
+            )
+            update["remediation_outcome"] = result.outcome
+            if result.rollbacks:
+                update["rollbacks"] = result.rollbacks
+        else:
+            update["remediation_outcome"] = "closed"
+        return update
+
     graph = StateGraph(InvestigationState)
 
     graph.add_node("supervisor", supervisor.supervisor_node)
@@ -272,8 +348,20 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         graph.add_edge("critic", "recommendation")
     else:
         graph.add_edge("rca", "recommendation")
-    # recommendation → finalize → END
-    graph.add_edge("recommendation", "finalize")
+
+    # Phase 4 remediation: recommendation → remediation → [INTERRUPT] → execute →
+    # finalize. The interrupt-before-execute is the HITL approval gate. Off by
+    # default, so the Phase 1-3 shape is recommendation → finalize unchanged.
+    interrupt_before: list[str] = []
+    if deps.enable_remediation:
+        graph.add_node("remediation", remediation_node)
+        graph.add_node("execute_remediation", execute_remediation_node)
+        graph.add_edge("recommendation", "remediation")
+        graph.add_edge("remediation", "execute_remediation")
+        graph.add_edge("execute_remediation", "finalize")
+        interrupt_before.append("execute_remediation")
+    else:
+        graph.add_edge("recommendation", "finalize")
     graph.add_edge("finalize", END)
 
     log.info(
@@ -282,9 +370,13 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         memory=deps.memory is not None,
         knowledge=deps.knowledge is not None,
         critic=deps.enable_critic,
+        remediation=deps.enable_remediation,
         checkpointer=checkpointer is not None,
     )
-    return graph.compile(checkpointer=checkpointer)
+    return graph.compile(
+        checkpointer=checkpointer,
+        interrupt_before=interrupt_before or None,
+    )
 
 
 def _prompt_version(agent_name: str, prompt_name: str, state: InvestigationState) -> dict[str, str]:

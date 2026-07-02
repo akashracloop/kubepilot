@@ -62,6 +62,21 @@ class InvestigationApiClient:
         resp.raise_for_status()
         return resp.json()  # type: ignore[no-any-return]
 
+    async def get_approval(self, incident_id: str) -> dict:
+        """GET the pending remediation plan + approval status (Phase 4)."""
+        resp = await self._client.get(f"/investigations/{incident_id}/approval")
+        resp.raise_for_status()
+        return resp.json()  # type: ignore[no-any-return]
+
+    async def decide_remediation(self, incident_id: str, decision: str, action_index: int) -> dict:
+        """POST an approve/reject decision for a remediation action (Phase 4)."""
+        assert decision in ("approve", "reject")
+        resp = await self._client.post(
+            f"/investigations/{incident_id}/{decision}", json={"action_index": action_index}
+        )
+        resp.raise_for_status()
+        return resp.json()  # type: ignore[no-any-return]
+
     async def wait_for(
         self,
         incident_id: str,

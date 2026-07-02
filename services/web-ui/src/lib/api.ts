@@ -97,7 +97,24 @@ export interface InvestigationState {
   calibrated_confidence?: number | null;
   knowledge_context?: ServiceKnowledge[];
   prompt_versions?: Record<string, string>;
+  // Phase 4 remediation.
+  remediation_plan?: { actions: RemediationActionState[]; notes?: string | null } | null;
+  remediation_outcome?: string | null;
   [key: string]: unknown;
+}
+
+export interface RemediationActionState {
+  tool: string;
+  target: string;
+  namespace: string;
+  reversibility: string;
+  approval_tier: string;
+  rationale?: string;
+  estimated_blast_radius?: {
+    pods_affected?: number | null;
+    traffic_percent?: number | null;
+    dependents?: string[];
+  } | null;
 }
 
 export interface InvestigationDetail {
@@ -181,6 +198,50 @@ export async function getInvestigation(
     cache: "no-store",
   });
   return handle<InvestigationDetail>(res);
+}
+
+// Phase 4: HITL remediation approval.
+export interface ApprovalAction {
+  index: number;
+  tool: string;
+  target: string;
+  namespace: string;
+  reversibility: string;
+  approval_tier: string;
+  rationale: string;
+  blast_radius: {
+    pods_affected?: number | null;
+    traffic_percent?: number | null;
+    dependents?: string[];
+    summary?: string;
+  } | null;
+  dry_run_preview?: string | null;
+}
+
+export interface ApprovalView {
+  status: string; // pending_approval | approved | rejected | expired | no_plan
+  actions: ApprovalAction[];
+}
+
+export async function getApproval(id: string): Promise<ApprovalView> {
+  const res = await fetch(`${API_BASE_URL}/investigations/${id}/approval`, {
+    headers: authHeaders(),
+    cache: "no-store",
+  });
+  return handle<ApprovalView>(res);
+}
+
+export async function decideRemediation(
+  id: string,
+  decision: "approve" | "reject",
+  actionIndex: number
+): Promise<{ status: string; action_index: number }> {
+  const res = await fetch(`${API_BASE_URL}/investigations/${id}/${decision}`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ action_index: actionIndex }),
+  });
+  return handle<{ status: string; action_index: number }>(res);
 }
 
 export interface StreamEvent {

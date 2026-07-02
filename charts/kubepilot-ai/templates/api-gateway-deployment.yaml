@@ -68,6 +68,17 @@ spec:
               value: {{ .Values.apiGateway.phase3.knowledgeEnabled | quote }}
             - name: KUBEPILOT_API_TIMELINE_LLM_LABELS
               value: {{ .Values.apiGateway.phase3.timelineLlmLabels | quote }}
+            # ---- Phase 4 remediation (WRITES) — HITL-gated, off unless enabled ----
+            - name: KUBEPILOT_API_REMEDIATION_ENABLED
+              value: {{ .Values.remediation.enabled | quote }}
+            {{- if .Values.remediation.enabled }}
+            - name: KUBEPILOT_API_REMEDIATION_WRITE_URL
+              value: "http://mcp-k8s-write.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            {{- if .Values.remediation.policiesYaml }}
+            - name: KUBEPILOT_API_REMEDIATION_POLICY_PATH
+              value: "/etc/kubepilot/remediation/policies.yaml"
+            {{- end }}
+            {{- end }}
             {{- if .Values.apiGateway.phase3.knowledgeSnapshotPath }}
             - name: KUBEPILOT_API_KNOWLEDGE_SNAPSHOT_PATH
               value: {{ .Values.apiGateway.phase3.knowledgeSnapshotPath | quote }}
@@ -146,6 +157,16 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if and .Values.remediation.enabled .Values.remediation.policiesYaml }}
+            - name: remediation-policies
+              mountPath: /etc/kubepilot/remediation
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if and .Values.remediation.enabled .Values.remediation.policiesYaml }}
+        - name: remediation-policies
+          configMap:
+            name: {{ include "kubepilot.fullname" . }}-remediation-policies
+        {{- end }}

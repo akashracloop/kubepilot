@@ -102,6 +102,17 @@ class ApiSettings(BaseSettings):
     # baseline; enabling adds one cheap summarization call per investigation.
     timeline_llm_labels: bool = False
 
+    # Phase 4 remediation (WRITES). When true, the graph proposes an executable
+    # remediation plan and interrupts before executing it (HITL approval). OFF by
+    # default — the entire write path is opt-in.
+    remediation_enabled: bool = False
+    # In-cluster endpoint of the mcp-k8s-write server (only present when
+    # remediation is enabled).
+    remediation_write_url: str = "http://mcp-k8s-write:8080"
+    # Optional path to an operator-provided execution-policy YAML (a mounted
+    # ConfigMap). None → the shipped reference policy set (still default-deny).
+    remediation_policy_path: str | None = None
+
 
 def load_settings() -> ApiSettings:
     return ApiSettings()

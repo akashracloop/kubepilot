@@ -30,6 +30,10 @@ Start here. Docs are grouped by what you're trying to do.
 | [features/guardrails.md](./features/guardrails.md) | **Phase 3:** prompt-injection sanitization + forbidden-recommendation policy. |
 | [features/rbac.md](./features/rbac.md) | **Phase 3:** RBAC v2 (viewer/investigator/operator/admin) + namespace scoping + SIEM audit export. |
 | [features/observability-adapters.md](./features/observability-adapters.md) | **Phase 3:** the observability-adapter interface + the Datadog reference MCP server. |
+| [features/remediation.md](./features/remediation.md) | **Phase 4:** the HITL-gated write pipeline (plan → policy → blast radius → approve → execute → validate/rollback). |
+| [features/approval-workflow.md](./features/approval-workflow.md) | **Phase 4:** graph interrupt-before-execute, approver RBAC, expiry, UI/Slack approval, kill switch. |
+| [features/execution-policies.md](./features/execution-policies.md) | **Phase 4:** the default-deny execution policy engine + reference policies. |
+| [features/self-healing.md](./features/self-healing.md) | **Phase 4:** opt-in-per-pattern autonomous fixes, still fully gated. |
 
 ## 📐 Reference & planning
 

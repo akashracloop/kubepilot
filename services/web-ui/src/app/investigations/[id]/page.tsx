@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
+  decideRemediation,
   getInvestigation,
   streamInvestigation,
   type InvestigationDetail,
@@ -146,8 +147,20 @@ export default function InvestigationDetailPage() {
   const critique = state.critique ?? null;
   const calibratedConfidence = state.calibrated_confidence ?? null;
   const knowledgeContext = state.knowledge_context ?? [];
+  const remediationPlan = state.remediation_plan ?? null;
+  const remediationOutcome = state.remediation_outcome ?? null;
   const isCompleted = detail?.status === "completed";
   const isTerminal = detail ? TERMINAL.has(detail.status) : false;
+
+  async function decide(decision: "approve" | "reject", index: number) {
+    if (!id) return;
+    try {
+      await decideRemediation(id, decision, index);
+      setDetail(await getInvestigation(id)); // refresh to show the new status
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "approval failed");
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -464,6 +477,69 @@ export default function InvestigationDetailPage() {
                       )
                       .join("  ·  ")}
                   </p>
+                )}
+              </div>
+            ))}
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Remediation approval (Phase 4 — HITL) */}
+      {remediationPlan && remediationPlan.actions.length > 0 && (
+        <Card className="border-amber-200">
+          <CardHeader>
+            <CardTitle>
+              Remediation Approval{" "}
+              <span className="ml-1 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                {remediationOutcome ?? "pending_approval"}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-3 text-sm">
+            <p className="text-neutral-600">
+              These actions require explicit approval before KubePilot executes
+              them. Reversible actions are preferred; nothing runs until approved.
+            </p>
+            {remediationPlan.actions.map((a, i) => (
+              <div
+                key={i}
+                className="rounded border border-neutral-200 px-3 py-2"
+              >
+                <div className="font-mono font-medium text-neutral-900">
+                  {a.tool} → {a.target}{" "}
+                  <span className="text-xs font-normal text-neutral-500">
+                    ({a.reversibility}, approve: {a.approval_tier})
+                  </span>
+                </div>
+                {a.rationale && (
+                  <div className="text-neutral-700">{a.rationale}</div>
+                )}
+                {a.estimated_blast_radius && (
+                  <div className="text-xs text-neutral-500">
+                    blast radius: ~{a.estimated_blast_radius.pods_affected ?? "?"}{" "}
+                    pod(s), ~{a.estimated_blast_radius.traffic_percent ?? "?"}%
+                    traffic
+                    {a.estimated_blast_radius.dependents &&
+                    a.estimated_blast_radius.dependents.length > 0
+                      ? ` · dependents: ${a.estimated_blast_radius.dependents.join(", ")}`
+                      : ""}
+                  </div>
+                )}
+                {remediationOutcome === "pending_approval" && (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => decide("approve", i)}
+                      className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => decide("reject", i)}
+                      className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700"
+                    >
+                      Reject
+                    </button>
+                  </div>
                 )}
               </div>
             ))}

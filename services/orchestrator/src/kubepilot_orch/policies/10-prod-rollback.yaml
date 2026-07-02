@@ -1,0 +1,10 @@
+# Reference policy: reversible rollbacks in prod, operator-approved, capped.
+policies:
+  - name: prod-reversible-rollback
+    roles: [operator, admin]
+    namespaces: [prod]
+    actions: [rollout_undo, rollout_restart, patch_image]
+    reversibility: [reversible]
+    max_blast_radius:
+      pods: 50
+      traffic_percent: 100

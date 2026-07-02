@@ -1,0 +1,7 @@
+# Reference policy: node cordon/uncordon for operators (reversible node ops).
+policies:
+  - name: node-cordon-ops
+    roles: [operator, admin]
+    namespaces: ["*"]
+    actions: [cordon, uncordon]
+    reversibility: [reversible]
