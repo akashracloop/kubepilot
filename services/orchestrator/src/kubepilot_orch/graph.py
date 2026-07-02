@@ -233,6 +233,16 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
 
     async def remediation_node(state: InvestigationState) -> dict[str, Any]:
         plan = await remediation_agent.run(state, llm=deps.llm)
+        # Estimate each action's blast radius from live cluster facts BEFORE the
+        # HITL interrupt, so approvers see the real impact and the policy
+        # blast-radius caps (W2) have numbers to gate on.
+        if plan.actions:
+            from kubepilot_orch.remediation import cluster_facts
+
+            for action in plan.actions:
+                action.estimated_blast_radius = await cluster_facts.estimate_blast_radius(
+                    action, deps.mcp_k8s, state.knowledge_context
+                )
         update = remediation_agent.to_state_update(plan)
         update["prompt_versions"] = _prompt_version(
             remediation_agent.AGENT_NAME, remediation_agent.PROMPT_NAME, state
