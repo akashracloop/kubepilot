@@ -19,6 +19,7 @@ from typing import Any
 
 import structlog
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from kubepilot_api import __version__
 from kubepilot_api.auth import make_principal_dep
@@ -172,6 +173,14 @@ def build_app(
     app.state.settings = settings
     if orchestrator is not None:
         app.state.orchestrator = orchestrator
+
+    # CORS so the browser-based Web UI (a different origin) can call the API.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     app.include_router(health_router)
     app.include_router(make_investigations_router(principal_dep=make_principal_dep(settings)))

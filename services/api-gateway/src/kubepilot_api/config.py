@@ -54,6 +54,11 @@ class ApiSettings(BaseSettings):
     mcp: MCPEndpoints = Field(default_factory=MCPEndpoints)
     auth: AuthSettings = Field(default_factory=AuthSettings)
 
+    # CORS: origins allowed to call the API from a browser (the Web UI SPA).
+    # Default allows any origin — fine since auth is a header token (no cookies).
+    # Set to specific origins (e.g. https://kubepilot.example.com) in production.
+    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+
     # Storage backend — "postgres" in prod, "memory" in tests / dev without DB.
     storage: str = "postgres"
 
