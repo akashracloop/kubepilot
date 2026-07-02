@@ -18,7 +18,7 @@ from __future__ import annotations
 import structlog
 from pydantic import ValidationError
 
-from kubepilot_orch.agents.prompts import load_prompt
+from kubepilot_orch.agents.prompt_registry import resolve_prompt
 from kubepilot_orch.llm.base import Message, Role
 from kubepilot_orch.llm.parsing import strip_code_fences
 from kubepilot_orch.llm.router import LLMRouter
@@ -27,6 +27,7 @@ from kubepilot_orch.state import Critique, Evidence, InvestigationState
 log = structlog.get_logger(__name__)
 
 AGENT_NAME = "critic"
+PROMPT_NAME = "critic_agent"
 
 # Deterministic escalation thresholds applied on top of the model's own judgement.
 # Low agreement OR a low adjusted confidence routes the finding to a human — the
@@ -53,10 +54,11 @@ async def run(state: InvestigationState, *, llm: LLMRouter) -> Critique:
         )
 
     user_msg = _build_user_message(state)
+    _, system_prompt = resolve_prompt(PROMPT_NAME, key=str(state.incident_id))
     resp = await llm.chat(
         role=Role.CRITIQUE,
         messages=[
-            Message(role="system", content=load_prompt("critic_agent")),
+            Message(role="system", content=system_prompt),
             Message(role="user", content=user_msg),
         ],
         response_schema=Critique,

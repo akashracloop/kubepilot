@@ -339,6 +339,9 @@ async def test_graph_runs_critic_between_rca_and_recommendation() -> None:
 
     state = InvestigationState.model_validate(final)
     assert "critic" in state.completed_agents
+    # W9: each reasoning agent records its prompt version (bare files resolve as v1),
+    # merged (not clobbered) across the serial rca → critic → recommendation nodes.
+    assert state.prompt_versions == {"rca": "v1", "critic": "v1", "recommendation": "v1"}
     assert state.critique is not None
     assert state.critique.escalate_to_human is True  # policy forced it (agreement 0.3)
     # Raw RCA confidence preserved; critic-adjusted value surfaced separately.

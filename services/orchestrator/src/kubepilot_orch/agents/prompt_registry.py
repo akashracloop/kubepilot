@@ -133,5 +133,25 @@ class PromptRegistry:
 
 @lru_cache(maxsize=1)
 def default_registry() -> PromptRegistry:
-    """Process-wide default registry (no pins, no A/B) over the packaged prompts."""
+    """Process-wide default registry (no pins, no A/B) over the packaged prompts.
+
+    The returned instance is shared and mutable: the api-gateway applies active-
+    version pins / A/B config to it at startup (rollback is a config flip + restart).
+    """
     return PromptRegistry()
+
+
+def resolve_prompt(
+    name: str, *, key: str | None = None, registry: PromptRegistry | None = None
+) -> tuple[str, str]:
+    """Resolve ``(version, text)`` for a prompt, honoring A/B when a ``key`` is given.
+
+    ``key`` (e.g. the incident id) routes to a deterministic A/B arm via
+    :meth:`PromptRegistry.select_ab`; without a key the active version is served.
+    Deterministic: the same (name, key) always resolves the same version, so a
+    node can re-resolve purely to *record* the version without risking divergence
+    from the version the agent actually used.
+    """
+    reg = registry or default_registry()
+    version = reg.select_ab(name, key) if key is not None else reg.active_version(name)
+    return reg.resolve(name, version)

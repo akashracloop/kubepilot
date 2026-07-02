@@ -49,6 +49,7 @@ from kubepilot_orch.agents import (
     supervisor,
     tracing_agent,
 )
+from kubepilot_orch.agents.prompt_registry import resolve_prompt
 from kubepilot_orch.calibration import IsotonicCalibrator
 from kubepilot_orch.knowledge.retriever import KnowledgeRetriever
 from kubepilot_orch.llm.router import LLMRouter
@@ -171,11 +172,19 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
 
     async def rca_node(state: InvestigationState) -> dict[str, Any]:
         report = await rca_agent.run(state, llm=deps.llm)
-        return rca_agent.to_state_update(report)
+        update = rca_agent.to_state_update(report)
+        update["prompt_versions"] = _prompt_version(
+            rca_agent.AGENT_NAME, rca_agent.PROMPT_NAME, state
+        )
+        return update
 
     async def critic_node(state: InvestigationState) -> dict[str, Any]:
         critique = await critic_agent.run(state, llm=deps.llm)
-        return critic_agent.to_state_update(critique)
+        update = critic_agent.to_state_update(critique)
+        update["prompt_versions"] = _prompt_version(
+            critic_agent.AGENT_NAME, critic_agent.PROMPT_NAME, state
+        )
+        return update
 
     async def finalize_node(state: InvestigationState) -> dict[str, Any]:
         update = await finalize.finalize_node(state)
@@ -191,7 +200,11 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
 
     async def recommendation_node(state: InvestigationState) -> dict[str, Any]:
         recs = await recommendation_agent.run(state, llm=deps.llm)
-        return recommendation_agent.to_state_update(recs)
+        update = recommendation_agent.to_state_update(recs)
+        update["prompt_versions"] = _prompt_version(
+            recommendation_agent.AGENT_NAME, recommendation_agent.PROMPT_NAME, state
+        )
+        return update
 
     graph = StateGraph(InvestigationState)
 
@@ -259,6 +272,17 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         checkpointer=checkpointer is not None,
     )
     return graph.compile(checkpointer=checkpointer)
+
+
+def _prompt_version(agent_name: str, prompt_name: str, state: InvestigationState) -> dict[str, str]:
+    """Record which prompt version an agent used, keyed by incident id for A/B.
+
+    Re-resolves the same deterministic version the agent used (``resolve_prompt``
+    is a pure function of name + key), so ``state.prompt_versions`` traces exactly
+    which arm produced this investigation.
+    """
+    version, _ = resolve_prompt(prompt_name, key=str(state.incident_id))
+    return {agent_name: version}
 
 
 def _agent_to_state_update(agent_name: str, output: AgentOutput) -> dict[str, Any]:

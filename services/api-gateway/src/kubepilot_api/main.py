@@ -43,12 +43,18 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
     Imported lazily so tests can build the app without the langchain dependencies
     when they pass in their own ``compiled_graph``.
     """
+    from kubepilot_orch.agents.prompt_registry import default_registry
     from kubepilot_orch.config import load_settings as load_orch_settings
     from kubepilot_orch.graph import AgentDeps, build_graph
     from kubepilot_orch.llm.factory import build_router
     from kubepilot_orch.mcp.adapter import Capability, build_router_from_endpoints
 
     orch_settings = load_orch_settings()
+
+    # Apply prompt-version pins (the rollback lever) to the shared registry that the
+    # reasoning agents resolve against. Config-only + restart → rollback in <5 min.
+    if settings.prompt_active_versions:
+        default_registry().active.update(settings.prompt_active_versions)
 
     # Capability-based MCP routing: each domain maps to an endpoint. Endpoints that
     # share a URL share ONE client, so pointing metrics/logs/tracing at a single

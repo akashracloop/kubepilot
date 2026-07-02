@@ -86,6 +86,11 @@ class ApiSettings(BaseSettings):
     # the raw RCA confidence to an empirically-calibrated value. None → no calibration.
     calibrator_path: str | None = None
 
+    # Phase 3 prompt versioning: pin a prompt to a specific version, e.g.
+    # {"rca_agent": "v2"}. This is the rollback lever — set it (env/values) and
+    # restart to roll a prompt back in <5 min. Empty → each prompt serves its latest.
+    prompt_active_versions: dict[str, str] = Field(default_factory=dict)
+
 
 def load_settings() -> ApiSettings:
     return ApiSettings()

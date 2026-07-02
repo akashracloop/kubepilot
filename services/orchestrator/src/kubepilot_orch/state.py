@@ -204,7 +204,9 @@ class InvestigationState(BaseModel):
         default_factory=list
     )  # cluster knowledge graph
     calibrated_confidence: float | None = None  # RCA confidence mapped to empirical accuracy
-    prompt_versions: dict[str, str] = Field(default_factory=dict)  # prompt name -> version used
+    # agent -> prompt version used (W9). Reducer-merged so each reasoning node
+    # (rca/critic/recommendation) can record its own arm without clobbering others.
+    prompt_versions: Annotated[dict[str, str], _merge_dicts] = Field(default_factory=dict)
 
     # Trace metadata
     started_at: datetime

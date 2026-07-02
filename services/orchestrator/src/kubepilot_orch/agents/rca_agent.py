@@ -9,7 +9,7 @@ from __future__ import annotations
 import structlog
 from pydantic import ValidationError
 
-from kubepilot_orch.agents.prompts import load_prompt
+from kubepilot_orch.agents.prompt_registry import resolve_prompt
 from kubepilot_orch.llm.base import Message, Role
 from kubepilot_orch.llm.parsing import strip_code_fences
 from kubepilot_orch.llm.router import LLMRouter
@@ -19,6 +19,7 @@ from kubepilot_orch.state import Evidence, InvestigationState, RCAReport, Servic
 log = structlog.get_logger(__name__)
 
 AGENT_NAME = "rca"
+PROMPT_NAME = "rca_agent"
 
 
 async def run(state: InvestigationState, *, llm: LLMRouter) -> RCAReport:
@@ -28,11 +29,12 @@ async def run(state: InvestigationState, *, llm: LLMRouter) -> RCAReport:
     "Unknown" report if the model produces unparseable output.
     """
     user_msg = _build_user_message(state)
+    _, system_prompt = resolve_prompt(PROMPT_NAME, key=str(state.incident_id))
 
     resp = await llm.chat(
         role=Role.ANALYSIS,
         messages=[
-            Message(role="system", content=load_prompt("rca_agent")),
+            Message(role="system", content=system_prompt),
             Message(role="user", content=user_msg),
         ],
         response_schema=RCAReport,
