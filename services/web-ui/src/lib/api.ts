@@ -19,7 +19,7 @@ export interface Evidence {
   source_agent: string;
   kind: string;
   summary: string;
-  detail?: string;
+  detail?: Record<string, unknown>;
   severity: string;
   collected_at?: string;
 }

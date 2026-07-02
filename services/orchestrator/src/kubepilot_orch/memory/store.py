@@ -41,6 +41,12 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
+def _vec_literal(embedding: list[float]) -> str:
+    """pgvector text literal, e.g. '[0.1,0.2]'. Combined with a ``::vector`` cast
+    so the value is a ``vector`` (not a ``double precision[]``) for the `<=>` op."""
+    return "[" + ",".join(repr(float(x)) for x in embedding) + "]"
+
+
 @runtime_checkable
 class MemoryStore(Protocol):
     async def add(self, incident: StoredIncident) -> None: ...
@@ -130,13 +136,13 @@ class PgVectorMemoryStore:
                 INSERT INTO {self._table}
                     (incident_id, summary, embedding, root_cause_category,
                      namespace, service, outcome, occurred_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s::vector, %s, %s, %s, %s, %s)
                 ON CONFLICT (incident_id) DO UPDATE SET embedding = EXCLUDED.embedding
                 """,
                 (
                     str(incident.incident_id),
                     incident.summary,
-                    incident.embedding,
+                    _vec_literal(incident.embedding),
                     incident.root_cause_category,
                     incident.namespace,
                     incident.service,
@@ -154,23 +160,23 @@ class PgVectorMemoryStore:
         k: int = 5,
     ) -> list[tuple[StoredIncident, float]]:
         pool = await self._ensure()
+        vec = _vec_literal(embedding)
         where = ""
-        params: list[Any] = [embedding]
+        mid: list[Any] = []
         if namespace is not None:
             where = "WHERE namespace = %s"
-            params.append(namespace)
-        params.append(k)
+            mid.append(namespace)
         async with pool.connection() as conn:
             cur = await conn.execute(
                 f"""
                 SELECT incident_id, summary, root_cause_category, namespace, service,
-                       outcome, occurred_at, 1 - (embedding <=> %s) AS similarity
+                       outcome, occurred_at, 1 - (embedding <=> %s::vector) AS similarity
                 FROM {self._table}
                 {where}
-                ORDER BY embedding <=> %s
+                ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
-                [embedding, *params[1:-1], embedding, params[-1]],
+                [vec, *mid, vec, k],
             )
             rows = await cur.fetchall()
         out: list[tuple[StoredIncident, float]] = []

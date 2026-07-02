@@ -59,10 +59,10 @@ kubectl -n kubepilot-system get pods -w
 
 ```bash
 kubectl -n kubepilot-system port-forward svc/kubepilot-ai-web-ui 3000:3000
-open http://localhost:3000                 # API key: local-dev-key
+open http://localhost:3000   # auth is disabled in values-local — no key needed                 # API key: local-dev-key
 ```
 
-Trigger an investigation for `oom-app` in namespace `demo`. The report shows the
+Auth is disabled in the local profile (laptop-only), so no key is needed. Trigger an investigation for `oom-app` in namespace `demo`. The report shows the
 root cause + confidence, evidence, the **timeline**, any **similar past
 incidents** (memory), and recommendations.
 

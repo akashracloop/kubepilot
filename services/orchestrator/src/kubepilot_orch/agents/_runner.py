@@ -22,7 +22,8 @@ from typing import Any
 import structlog
 from pydantic import ValidationError
 
-from kubepilot_orch.llm.base import LLMResponse, Message, Role, ToolSchema
+from kubepilot_orch.llm.base import Message, Role, ToolSchema
+from kubepilot_orch.llm.parsing import strip_code_fences
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.mcp.client import MCPClient, MCPError
 from kubepilot_orch.state import AgentOutput, Evidence, Severity
@@ -93,7 +94,15 @@ async def run_agent(spec: AgentSpec) -> AgentOutput:
             )
             break
 
-        messages.append(Message(role="assistant", content=resp.content or _tool_call_marker(resp)))
+        # Carry the tool_calls on the assistant turn so the following role="tool"
+        # messages are valid responses to them (OpenAI enforces this).
+        messages.append(
+            Message(
+                role="assistant",
+                content=resp.content or "",
+                tool_calls=resp.tool_calls,
+            )
+        )
 
         for tc in resp.tool_calls:
             tool_calls_made += 1
@@ -140,7 +149,7 @@ async def run_agent(spec: AgentSpec) -> AgentOutput:
     tokens_total += summary_resp.output_tokens + summary_resp.input_tokens
 
     try:
-        output = AgentOutput.model_validate_json(summary_resp.content)
+        output = AgentOutput.model_validate_json(strip_code_fences(summary_resp.content))
     except (ValidationError, ValueError) as e:
         log.error(
             "agent_summary_invalid",
@@ -171,16 +180,10 @@ def _normalize_evidence(evidence: list[Evidence], agent_name: str) -> list[Evide
     for e in evidence:
         if not e.source_agent:
             e = e.model_copy(update={"source_agent": agent_name})
-        if e.collected_at is None:  # type: ignore[unreachable]
+        if e.collected_at is None:
             e = e.model_copy(update={"collected_at": now})
         out.append(e)
     return out
-
-
-def _tool_call_marker(resp: LLMResponse) -> str:
-    """Stable placeholder when the LLM emitted tool_calls with no text content."""
-    names = ", ".join(tc.name for tc in resp.tool_calls)
-    return f"(calling tools: {names})"
 
 
 def _truncate_tool_result(result: Any, max_chars: int) -> str:

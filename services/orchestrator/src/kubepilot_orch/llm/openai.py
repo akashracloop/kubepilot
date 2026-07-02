@@ -96,6 +96,14 @@ def _to_lc(m: Message) -> Any:
         case "user":
             return HumanMessage(content=m.content)
         case "assistant":
+            if m.tool_calls:
+                return AIMessage(
+                    content=m.content,
+                    tool_calls=[
+                        {"name": tc.name, "args": tc.arguments, "id": tc.id, "type": "tool_call"}
+                        for tc in m.tool_calls
+                    ],
+                )
             return AIMessage(content=m.content)
         case "tool":
             return ToolMessage(content=m.content, tool_call_id=m.tool_call_id or "")

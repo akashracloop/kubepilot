@@ -27,8 +27,12 @@ apiGateway:
   storage: postgres
   checkpointer: postgres
   auth:
-    # Throwaway LOCAL key (safe to commit — not a secret). Use it from the UI/CLI.
-    apiKey: "local-dev-key"
+    # Auth is DISABLED for the local demo (empty key = open mode). The cluster is
+    # laptop-only and not exposed. This lets the browser Web UI call the API
+    # without a key — Next.js bakes NEXT_PUBLIC_* at build time, so a runtime key
+    # can't reach the browser bundle. In production, keep auth on and put the Web
+    # UI behind a same-origin reverse proxy that injects the key server-side.
+    apiKey: ""
   resources:
     requests:
       cpu: 100m

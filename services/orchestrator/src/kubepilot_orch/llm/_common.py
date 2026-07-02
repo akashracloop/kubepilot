@@ -27,7 +27,23 @@ def to_lc_messages(messages: list[Message]) -> list[Any]:
             case "user":
                 out.append(HumanMessage(content=m.content))
             case "assistant":
-                out.append(AIMessage(content=m.content))
+                if m.tool_calls:
+                    out.append(
+                        AIMessage(
+                            content=m.content,
+                            tool_calls=[
+                                {
+                                    "name": tc.name,
+                                    "args": tc.arguments,
+                                    "id": tc.id,
+                                    "type": "tool_call",
+                                }
+                                for tc in m.tool_calls
+                            ],
+                        )
+                    )
+                else:
+                    out.append(AIMessage(content=m.content))
             case "tool":
                 out.append(ToolMessage(content=m.content, tool_call_id=m.tool_call_id or ""))
             case _:
