@@ -96,3 +96,58 @@ def test_empty_state_does_not_crash() -> None:
 def test_progress_message_is_short_text() -> None:
     msg = progress_message("agent_started", node="metrics_agent")
     assert "metrics agent" in msg
+
+
+# ---- Phase 4: remediation approval card ------------------------------------
+
+from kubepilot_slack.blocks import (  # noqa: E402
+    approval_card,
+    decode_action_id,
+    encode_action_id,
+)
+
+_APPROVAL = {
+    "status": "pending_approval",
+    "actions": [
+        {
+            "index": 0,
+            "tool": "rollout_undo",
+            "target": "deployment/checkout",
+            "namespace": "prod",
+            "reversibility": "reversible",
+            "approval_tier": "operator",
+            "rationale": "Revert the regressive deploy.",
+            "blast_radius": {
+                "pods_affected": 3,
+                "traffic_percent": 100.0,
+                "dependents": ["web-frontend"],
+            },
+        }
+    ],
+}
+
+
+def test_action_id_roundtrips() -> None:
+    aid = encode_action_id("approve", "abc-123", 2)
+    assert decode_action_id(aid) == ("approve", "abc-123", 2)
+
+
+def test_approval_card_has_buttons_and_impact() -> None:
+    blocks = approval_card("abc-123", _APPROVAL)
+    assert all("type" in b for b in blocks)
+    # An actions block with an Approve + Reject button exists.
+    action_blocks = [b for b in blocks if b["type"] == "actions"]
+    assert len(action_blocks) == 1
+    texts = [e["text"]["text"] for e in action_blocks[0]["elements"]]
+    assert texts == ["Approve", "Reject"]
+    # The buttons carry the encoded decision:incident:index.
+    decisions = {decode_action_id(e["action_id"])[0] for e in action_blocks[0]["elements"]}
+    assert decisions == {"approve", "reject"}
+    # Blast radius + reversibility surfaced in the section text.
+    joined = "".join(b.get("text", {}).get("text", "") for b in blocks if b["type"] == "section")
+    assert "rollout_undo" in joined and "reversible" in joined and "web-frontend" in joined
+
+
+def test_approval_card_empty_actions() -> None:
+    blocks = approval_card("x", {"status": "no_plan", "actions": []})
+    assert any("No remediation actions" in b.get("text", {}).get("text", "") for b in blocks)
