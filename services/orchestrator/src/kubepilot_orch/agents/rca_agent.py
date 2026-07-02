@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from kubepilot_orch.agents.prompts import load_prompt
 from kubepilot_orch.llm.base import Message, Role
+from kubepilot_orch.llm.parsing import strip_code_fences
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.state import Evidence, InvestigationState, RCAReport
 
@@ -38,7 +39,7 @@ async def run(state: InvestigationState, *, llm: LLMRouter) -> RCAReport:
     )
 
     try:
-        report = RCAReport.model_validate_json(resp.content)
+        report = RCAReport.model_validate_json(strip_code_fences(resp.content))
     except (ValidationError, ValueError) as e:
         log.error("rca_summary_invalid", error=str(e), content=resp.content[:500])
         report = RCAReport(

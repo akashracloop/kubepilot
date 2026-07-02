@@ -20,6 +20,14 @@ class Role(StrEnum):
     SUMMARIZATION = "summarization"
 
 
+class ToolCall(BaseModel):
+    """A tool invocation requested by the model."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
+
+
 class Message(BaseModel):
     """A single chat message."""
 
@@ -27,6 +35,10 @@ class Message(BaseModel):
     content: str
     tool_call_id: str | None = None  # set when role == "tool"
     name: str | None = None  # tool name (when role == "tool")
+    # Set on an assistant message that requested tools. Providers MUST render
+    # these so a following role="tool" message is a valid response to them —
+    # OpenAI rejects a tool message otherwise.
+    tool_calls: list[ToolCall] | None = None
 
 
 class ToolSchema(BaseModel):
@@ -35,14 +47,6 @@ class ToolSchema(BaseModel):
     name: str
     description: str
     parameters: dict[str, Any]  # JSON Schema
-
-
-class ToolCall(BaseModel):
-    """A tool invocation requested by the model."""
-
-    id: str
-    name: str
-    arguments: dict[str, Any]
 
 
 class LLMResponse(BaseModel):

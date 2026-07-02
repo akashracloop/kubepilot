@@ -6,6 +6,7 @@ returns a list of Recommendation objects ordered by priority.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import structlog
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from kubepilot_orch.agents.prompts import load_prompt
 from kubepilot_orch.llm.base import Message, Role
+from kubepilot_orch.llm.parsing import strip_code_fences
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.state import InvestigationState, Recommendation
 
@@ -47,13 +49,21 @@ async def run(state: InvestigationState, *, llm: LLMRouter) -> list[Recommendati
         temperature=0.0,
     )
 
+    text = strip_code_fences(resp.content)
     try:
-        parsed = _RecommendationList.model_validate_json(resp.content)
-    except (ValidationError, ValueError) as e:
-        log.error("recommendation_invalid_output", error=str(e), content=resp.content[:500])
-        return _fallback_from_rca(state)
+        recs = _RecommendationList.model_validate_json(text).recommendations
+    except (ValidationError, ValueError):
+        # Some models (e.g. gpt-4o-mini) return a bare JSON array instead of the
+        # {"recommendations": [...]} object. Accept either shape.
+        try:
+            raw = json.loads(text)
+            items = raw if isinstance(raw, list) else raw.get("recommendations", [])
+            recs = [Recommendation.model_validate(item) for item in items]
+        except (ValidationError, ValueError, json.JSONDecodeError) as e:
+            log.error("recommendation_invalid_output", error=str(e), content=text[:500])
+            return _fallback_from_rca(state)
 
-    recs = parsed.recommendations[:4]
+    recs = recs[:4]
     # Defensive: any write-shaped command must require approval, even if the LLM said otherwise.
     for r in recs:
         if _has_write_command(r) and not r.requires_approval:

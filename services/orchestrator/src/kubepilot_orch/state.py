@@ -39,21 +39,31 @@ class Severity(StrEnum):
 
 
 class Evidence(BaseModel):
-    """A single piece of evidence collected by a sub-agent."""
+    """A single piece of evidence collected by a sub-agent.
 
-    source_agent: str
+    ``source_agent`` and ``collected_at`` are code-filled (the runner stamps them
+    via _normalize_evidence), so they default here — an LLM producing evidence
+    naturally omits them, and requiring them would reject otherwise-valid output.
+    """
+
     kind: str  # e.g. "pod_state", "metric_anomaly", "log_pattern"
     summary: str
     detail: dict[str, Any] = Field(default_factory=dict)
     severity: Severity = Severity.INFO
-    collected_at: datetime
+    source_agent: str = ""  # stamped by the runner
+    collected_at: datetime | None = None  # stamped by the runner
 
 
 class AgentOutput(BaseModel):
-    """Structured output from a single agent run."""
+    """Structured output from a single agent run.
 
-    agent_name: str
-    succeeded: bool
+    ``agent_name`` is set by the runner after validation; ``succeeded`` defaults
+    true. Both default so a model that returns only ``evidence`` + ``notes``
+    validates cleanly.
+    """
+
+    agent_name: str = ""
+    succeeded: bool = True
     evidence: list[Evidence] = Field(default_factory=list)
     notes: str | None = None
     tokens_used: int = 0
