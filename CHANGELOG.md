@@ -48,8 +48,9 @@ exists when `remediation.enabled=true`, and even then is dry-run until
   interrupt-before-execute) → gated execution → validation → close/auto-rollback.
 - **`mcp-k8s-write`**: a separate write MCP with a curated, finite, reversible-
   leaning tool surface (rollout undo/restart, scale, restart-pod, cordon/uncordon,
-  patch-image, edit-configmap), dry-run on every tool, its own least-privilege
-  ClusterRole (rendered-chart contract test) + NetworkPolicy.
+  patch-image, edit-configmap), dry-run by default (real apply behind
+  `applyEnabled`), its own least-privilege ClusterRole (rendered-chart contract
+  test) + NetworkPolicy.
 - **Execution policy engine** (default-deny) + 5 reference policies; **blast-radius
   estimator**; **approver RBAC** (operator/admin tiers) + expiry; **execution
   engine** with per-action audit + a global **kill switch**; **auto-rollback** of
@@ -58,6 +59,35 @@ exists when `remediation.enabled=true`, and even then is dry-run until
 - Approval **UI** (card + Approve/Reject) and **Slack** approve/reject buttons;
   approve/reject/kill-switch API; state schema **v4** (additive) with v1–v4
   fixture-replay; a **kind e2e** sandbox (the only place real writes run).
+
+### Fixed — end-to-end wiring (post-implementation gap fixes)
+Phase 4 subsystems existed but were not connected; a live minikube run proved the
+whole pipeline, ending in a real HITL-approved cluster mutation.
+- **Resume after approval**: the orchestrator marked interrupted investigations
+  `completed` and closed the bus, so an approval never ran. It now parks at a new
+  `pending_approval` status and the approval route resumes the graph
+  (`aupdate_state` → execute → finalize). New SSE events
+  `investigation_awaiting_approval` / `investigation_resumed`.
+- **Real writes in `mcp-k8s-write`**: was dry-run-only (`applied=false` hardcoded).
+  Added a kubernetes-client apply path for every curated tool behind the
+  `applyEnabled` gate; declared the `kubernetes` dependency.
+- **Blast radius** is now populated from live cluster facts (was always empty),
+  which also activates the policy blast-radius caps.
+- **Rollback pre-state** and **post-remediation validation signals** are now wired
+  into the executor/graph (auto-rollback + reopen on regression); new
+  `remediation.signalQuery` knob.
+- **Self-healing** routes autonomously around the interrupt when enabled; new
+  `remediation.selfhealPatterns` / `selfhealRole` knobs.
+- **Confidence calibrator producer**: `run_eval --emit-calibrator` (+
+  `make eval-calibrator`) fits and writes the artifact, mounted via
+  `apiGateway.phase3.calibratorJson` — calibration could not engage before.
+- **`/ready`** now checks the DB (fatal → 503) and reports MCP + LLM status.
+- **TTFB latency eval** + a <5s median gate (`eval/harness/ttfb.py`).
+- **Model-output robustness**: `clean_json` strips `//` and `/* */` JSON comments
+  (string-aware, preserves URLs) across all agent parse sites — a live gpt-4o-mini
+  run emitted a `//` comment that silently dropped the remediation plan.
+- **Dev**: `psycopg[binary]` declared so the pgvector/knowledge integration tests
+  run on a bare machine (bundles libpq).
 
 ## [0.3.0] — Phase 3: enterprise-grade (not yet tagged)
 

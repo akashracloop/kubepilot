@@ -29,10 +29,25 @@ never matches, and a non-matching category produces no action.
 
 ## Enabling
 
-Self-healing is enabled per pattern by name. Because the action runs through the
-executor under an actor role (default `operator`), the execution policy must also
-permit that action — enabling a pattern is necessary but not sufficient; the
-policy still has the final say.
+Self-healing is enabled per pattern by name (comma-separated), and only when
+remediation itself is on:
+
+```bash
+helm upgrade kubepilot-ai ./charts/kubepilot-ai -n kubepilot-system \
+  --set remediation.enabled=true \
+  --set-string remediation.selfhealPatterns="imagepull_revert,crashloop_restart" \
+  --set-string remediation.selfhealRole=operator      # actor role the action runs as
+```
+
+(env equivalent: `KUBEPILOT_API_REMEDIATION_SELFHEAL_PATTERNS`.) When set and an
+incident matches an enabled pattern, the graph routes to an autonomous node
+**instead of** the HITL interrupt; with no patterns the shape is unchanged and
+every remediation waits for approval.
+
+Because the action runs through the executor under the actor role, the execution
+policy must also permit it — enabling a pattern is necessary but not sufficient;
+the policy still has the final say. And with `applyEnabled=false` an autonomous
+fix is still a dry-run, exactly like a human-approved one.
 
 Self-healing is the last, most-earned capability in Phase 4: use it only for
 patterns you have watched succeed under HITL, and keep the kill switch handy.

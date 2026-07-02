@@ -241,7 +241,7 @@ Each agent declares a *role* (e.g. `routing`, `analysis`, `summarization`) and t
 | **Deployment** | 2 | Service | Recent deploys, commits, pipeline status | CI MCP |
 | **RCA** | 1 | All sub-agent evidence | `{root_cause, confidence, evidence[], recommendations[]}` | — (reasoning only) |
 | **Recommendation** | 1 | RCA output | Ranked, actionable suggestions (no execution) | — |
-| **Remediation** | 4 | Approved recommendation | Executed k8s/helm commands | K8s MCP (write mode) |
+| **Remediation** | 4 | Approved plan | Audited per-action execution records | `mcp-k8s-write` (separate server, curated tools) |
 
 Each agent has:
 - A **system prompt** in `prompts/<agent>.md` (version-controlled, not inline)
