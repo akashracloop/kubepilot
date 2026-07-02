@@ -2,11 +2,14 @@
 
   - /mcp/health   liveness (+ whether apply is enabled)
   - /mcp/tools    the curated write-tool descriptors
-  - /mcp/invoke   returns a **dry-run** WriteResult (Phase 4 W1 applies nothing)
+  - /mcp/invoke   applies a curated mutation (or a dry-run preview)
 
 Hard off switch: real application is gated behind ``KUBEPILOT_WRITE_APPLY_ENABLED``
-(default false). In W1 the apply path is not implemented, so **every** invoke is a
-dry run regardless of the flag or the request - the server cannot mutate a cluster.
+(default false). With it OFF, **every** invoke is a dry run regardless of the
+request — the server cannot mutate a cluster. With it ON, an invoke that isn't an
+explicit ``dry_run`` preview performs the real mutation via the least-privilege
+kubernetes client. Callers wanting a preview even when apply is enabled pass
+``dry_run: true`` (server-side ``dryRun=All``).
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from mcp_k8s_write import __version__
+from mcp_k8s_write.apply import ApplyError, apply_tool
 from mcp_k8s_write.models import WriteResult
 from mcp_k8s_write.safety import WRITE_TOOLS
 
@@ -34,7 +38,9 @@ def _apply_enabled() -> bool:
 class InvokeRequest(BaseModel):
     tool: str
     arguments: dict[str, Any] = {}
-    dry_run: bool = True  # honored, but W1 forces dry-run regardless (see below)
+    # An approved action wants a real apply; the server's apply flag is the hard
+    # gate. Set true to force a dry-run preview even when apply is enabled.
+    dry_run: bool = False
 
 
 class InvokeResponse(BaseModel):
@@ -44,13 +50,14 @@ class InvokeResponse(BaseModel):
 
 @app.get("/mcp/health")
 async def health() -> dict[str, Any]:
+    enabled = _apply_enabled()
     return {
         "status": "ok",
         "server": "mcp-k8s-write",
         "version": __version__,
-        # Surfaced so operators can confirm the write path is inert.
-        "apply_enabled": _apply_enabled(),
-        "mode": "dry-run-only",
+        # Surfaced so operators can confirm the write path's posture.
+        "apply_enabled": enabled,
+        "mode": "apply-enabled" if enabled else "dry-run-only",
     }
 
 
@@ -80,14 +87,40 @@ async def invoke(req: InvokeRequest) -> InvokeResponse:
     args = req.arguments or {}
     namespace = args.get("namespace")
     target = args.get("target") or args.get("node") or "<unspecified>"
+    preview = _preview(spec.name, namespace, str(target), args)
+
+    apply_enabled = _apply_enabled()
+    # The apply flag is the hard gate. Perform a real mutation only when it is on
+    # AND the caller did not force a preview. Anything else is a dry run.
+    do_apply = apply_enabled and not req.dry_run
 
     warnings: list[str] = []
-    # Phase 4 W1: dry-run ONLY. Even an explicit apply request is refused here -
-    # real execution arrives with the policy/approval/executor pipeline (W7).
-    if not req.dry_run:
-        warnings.append("apply requested but this server is dry-run-only (W1); nothing was applied")
-    if not _apply_enabled():
-        warnings.append("KUBEPILOT_WRITE_APPLY_ENABLED is false")
+    if not apply_enabled:
+        warnings.append("KUBEPILOT_WRITE_APPLY_ENABLED is false; dry-run-only, nothing applied")
+
+    if not do_apply:
+        result = WriteResult(
+            tool=spec.name,
+            target=str(target),
+            namespace=namespace,
+            reversibility=spec.reversibility,
+            approval_tier=spec.approval_tier,
+            dry_run=True,
+            applied=False,
+            preview=preview,
+            note="dry-run — no cluster mutation performed",
+            warnings=warnings,
+        )
+        log.info("write_dry_run", tool=spec.name, namespace=namespace, target=target)
+        return InvokeResponse(tool=spec.name, result=result)
+
+    # Gate open + real apply requested → mutate the cluster via the curated tool.
+    try:
+        outcome = await apply_tool(spec.name, namespace, str(target), args, dry_run=False)
+    except ApplyError as e:
+        # Never a silent success: surface the failure so the executor records it.
+        log.warning("write_apply_failed", tool=spec.name, target=target, error=str(e))
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
     result = WriteResult(
         tool=spec.name,
@@ -95,18 +128,18 @@ async def invoke(req: InvokeRequest) -> InvokeResponse:
         namespace=namespace,
         reversibility=spec.reversibility,
         approval_tier=spec.approval_tier,
-        dry_run=True,
-        applied=False,
-        preview=_preview(spec.name, namespace, str(target), args),
-        note="dry-run only (Phase 4 W1) - no cluster mutation performed",
+        dry_run=False,
+        applied=bool(outcome.get("applied")),
+        preview=preview,
+        note=str(outcome.get("note") or "applied"),
         warnings=warnings,
     )
-    log.info("write_dry_run", tool=spec.name, namespace=namespace, target=target)
+    log.info("write_applied", tool=spec.name, namespace=namespace, target=target)
     return InvokeResponse(tool=spec.name, result=result)
 
 
 def _preview(tool: str, namespace: str | None, target: str, args: dict[str, Any]) -> str:
-    """Human-readable description of the would-be change (no cluster call in W1)."""
+    """Human-readable description of the would-be change (kubectl-equivalent)."""
     ns = f" -n {namespace}" if namespace else ""
     match tool:
         case "rollout_undo":
