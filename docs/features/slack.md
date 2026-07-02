@@ -180,6 +180,6 @@ of Socket Mode, needs no Service or Ingress.
 
 ## Next steps
 
-- [CLI](./cli.md) — the same investigations from a terminal / CI job
-- [Install](./install.md) — gateway auth and the `X-API-Key` model
-- [Architecture §8](./ARCHITECTURE.md#8-security-model) — auth and namespace scoping
+- [CLI](cli.md) — the same investigations from a terminal / CI job
+- [Install](../getting-started/install.md) — gateway auth and the `X-API-Key` model
+- [Architecture §8](../reference/architecture.md#8-security-model) — auth and namespace scoping

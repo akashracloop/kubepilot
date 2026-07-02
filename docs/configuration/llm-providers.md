@@ -1,6 +1,6 @@
 # Configuring LLM Providers
 
-> KubePilot AI is **provider-agnostic** and **BYOK** (bring your own key). All LLM calls flow through one abstraction; swapping Claude → GPT-4o → a local Llama is a config change, not a code change ([ARCHITECTURE.md §3.6](./ARCHITECTURE.md#36-llm-provider-layer)).
+> KubePilot AI is **provider-agnostic** and **BYOK** (bring your own key). All LLM calls flow through one abstraction; swapping Claude → GPT-4o → a local Llama is a config change, not a code change ([ARCHITECTURE.md §3.6](../reference/architecture.md#36-llm-provider-layer)).
 
 This guide covers all six supported providers, the per-role routing model, and complete `values.yaml` examples for cloud and air-gapped deployments.
 
@@ -35,7 +35,7 @@ The three roles (`kubepilot_orch.llm.base.Role`):
 | `analysis` | RCA agent correlates evidence and reasons about root cause | **Strongest model you have.** This is where accuracy is won or lost. Sonnet/Opus / gpt-4o / a 14B+ local model. |
 | `summarization` | Condensing evidence and drafting the final report | **Cheap.** A capable small model is fine. |
 
-This is why routing is deliberately split from analysis: the supervisor makes many small routing calls, and paying analysis-model prices for them is wasteful. Conversely, under-powering the analysis role is the single biggest cause of weak RCA (see [troubleshooting.md](./troubleshooting.md#empty-or-low-confidence-rca)).
+This is why routing is deliberately split from analysis: the supervisor makes many small routing calls, and paying analysis-model prices for them is wasteful. Conversely, under-powering the analysis role is the single biggest cause of weak RCA (see [troubleshooting.md](../getting-started/troubleshooting.md#empty-or-low-confidence-rca)).
 
 The settings shape lives in `services/orchestrator/src/kubepilot_orch/config.py`:
 
@@ -172,7 +172,7 @@ kubectl ... \
 ### vLLM (local)
 - **Needs:** an OpenAI-compatible vLLM endpoint (`vllm_base_url`, default `http://localhost:8000/v1`). No API key.
 - **Models:** the model name served by your vLLM instance.
-- GPU scheduling is left to the operator (see [ARCHITECTURE.md §13, decision 5](./ARCHITECTURE.md#13-resolved-architecture-decisions)) — document your NodeSelector/resource requests for the vLLM pod yourself.
+- GPU scheduling is left to the operator (see [ARCHITECTURE.md §13, decision 5](../reference/architecture.md#13-resolved-architecture-decisions)) — document your NodeSelector/resource requests for the vLLM pod yourself.
 
 ---
 
@@ -232,7 +232,7 @@ export KUBEPILOT_LLM__ROLES='{
 }'
 ```
 
-**Minimum model size.** Use **14B+ models for the analysis role**. Smaller models produce shallow, low-confidence RCA. If air-gapped RCA looks weak, the model is almost always the cause — bump the analysis model before anything else ([troubleshooting.md](./troubleshooting.md#air-gapped-model-quality)).
+**Minimum model size.** Use **14B+ models for the analysis role**. Smaller models produce shallow, low-confidence RCA. If air-gapped RCA looks weak, the model is almost always the cause — bump the analysis model before anything else ([troubleshooting.md](../getting-started/troubleshooting.md#air-gapped-model-quality)).
 
 The `prod-air-gapped` Helm profile enables the bundled Ollama subchart and Phoenix (self-hosted AgentOps), so no cloud LLM **or** cloud observability endpoint is required.
 
@@ -249,5 +249,5 @@ make smoke-test
 curl -s localhost:8080/ready
 ```
 
-If a selected provider has no configured credential, you'll see a `ProviderNotConfigured` error — see [troubleshooting.md](./troubleshooting.md#provider-not-configured).
+If a selected provider has no configured credential, you'll see a `ProviderNotConfigured` error — see [troubleshooting.md](../getting-started/troubleshooting.md#provider-not-configured).
 </content>

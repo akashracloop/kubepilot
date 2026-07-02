@@ -191,7 +191,7 @@ We ship our own for Phase 1 because four properties of the platform can't be del
 
 Our own MCP servers remain as the **reference implementation** that ships with the default Helm install and guarantees the four properties above out-of-the-box. They become *optional* in Phase 2, not removed.
 
-This decision is tracked in [ROADMAP.md Phase 2](./ROADMAP.md#phase-2--production-ready-analysis) under "Observability adapter pattern."
+This decision is tracked in [ROADMAP.md Phase 2](roadmap.md#phase-2--production-ready-analysis) under "Observability adapter pattern."
 
 ### 3.4 Integration Layer
 

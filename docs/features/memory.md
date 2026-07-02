@@ -4,7 +4,7 @@
 > is embedded and stored; before the RCA agent reasons on the *next* incident,
 > similar past incidents are retrieved and injected as context. This is the
 > long-term memory described in
-> [ARCHITECTURE.md §7.2](./ARCHITECTURE.md#72-long-term-memory-phase-2) — the
+> [ARCHITECTURE.md §7.2](../reference/architecture.md#72-long-term-memory-phase-2) — the
 > short-term LangGraph checkpointer (§7.1) is unchanged.
 >
 > Memory is **corroborating context, never an override.** Retrieved incidents
@@ -154,6 +154,6 @@ cluster signals say.**
 
 ## Next steps
 
-- [Tracing & deployment specialists](./tracing-and-ci.md) — the other Phase 2 signals
-- [LLM providers](./llm-providers.md) — the BYOK model that the OpenAI embedder shares
-- [Architecture §7](./ARCHITECTURE.md#7-memory-architecture) — the memory design in context
+- [Tracing & deployment specialists](tracing-and-ci.md) — the other Phase 2 signals
+- [LLM providers](../configuration/llm-providers.md) — the BYOK model that the OpenAI embedder shares
+- [Architecture §7](../reference/architecture.md#7-memory-architecture) — the memory design in context

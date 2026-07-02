@@ -61,7 +61,7 @@ A drop-in server must:
 KubePilot's reference servers additionally return *curated* response shapes (e.g.
 `PodSummary`, `TraceSummary`) that keep token usage down and accuracy up; a raw
 passthrough server will work but may cost more tokens and reason less precisely.
-See [ARCHITECTURE.md §3.3.1](./ARCHITECTURE.md#331-why-we-ship-our-own-mcp-servers-phase-1-and-how-that-evolves-phase-2).
+See [ARCHITECTURE.md §3.3.1](../reference/architecture.md#331-why-we-ship-our-own-mcp-servers-phase-1-and-how-that-evolves-phase-2).
 
 ## Community / vendor servers
 

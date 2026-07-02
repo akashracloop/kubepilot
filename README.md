@@ -5,7 +5,7 @@
 
 KubePilot AI investigates Kubernetes incidents autonomously by correlating signals across the cluster API, Prometheus, Loki, Tempo, and your CI/CD pipelines. It runs **any containerized workload** — Java, Python, Node.js, Go, .NET, databases, queues — and produces a root-cause analysis with evidence and confidence scoring, with **zero write access** to your cluster.
 
-**Status:** Phase 1 (MVP) — **feature-complete, pre-release.** All six agents, the three MCP servers, all six LLM providers, the Postgres-checkpointed LangGraph, the Web UI, the deployable Helm chart (dev / prod-small / prod-air-gapped), AgentOps token accounting, and a 20-scenario eval harness are implemented and tested. Remaining before `v0.1.0`: a tagged release, demo video, and external-tester validation. See [docs/PHASE_1_PLAN.md](docs/PHASE_1_PLAN.md).
+**Status:** Phase 1 (MVP) — **feature-complete, pre-release.** All six agents, the three MCP servers, all six LLM providers, the Postgres-checkpointed LangGraph, the Web UI, the deployable Helm chart (dev / prod-small / prod-air-gapped), AgentOps token accounting, and a 20-scenario eval harness are implemented and tested. Remaining before `v0.1.0`: a tagged release, demo video, and external-tester validation. See [Phase 1 Plan](docs/reference/phase-1-plan.md).
 
 ## Why KubePilot
 
@@ -35,7 +35,18 @@ LangGraph Supervisor ──┬─ Kubernetes Agent ──→ k8s-mcp
                             Redis (cache)
 ```
 
-Full engineering view in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Product vision in [IDEA.md](IDEA.md). Multi-phase roadmap in [docs/ROADMAP.md](docs/ROADMAP.md).
+Full engineering view in [Architecture](docs/reference/architecture.md). Product vision in [IDEA.md](IDEA.md). Multi-phase roadmap in [Roadmap](docs/reference/roadmap.md).
+
+📚 **All documentation:** [docs/README.md](docs/README.md) — start there.
+
+## Try it locally (minikube, ~1 command)
+
+```bash
+export OPENAI_API_KEY=sk-...     # BYOK; loaded into a Secret, never written to a file
+make minikube-up                 # builds images, installs Prom+Loki + KubePilot, deploys demo workloads
+```
+
+Full walkthrough: [Run on minikube](docs/getting-started/minikube.md).
 
 ## Quick Start (Local Dev)
 
@@ -82,12 +93,12 @@ These five decisions are binding for the initial release. See [IDEA.md](IDEA.md)
 > **Phase 2 is landing now (not yet released).** The Tracing + Deployment
 > specialists (`mcp-tempo` / `mcp-ci`), long-term pgvector memory, the Slack bot,
 > and the `kubepilot` CLI are implemented behind default-off Helm flags. See the
-> Phase 2 docs: [tracing & CI](docs/tracing-and-ci.md) ·
-> [memory](docs/memory.md) · [Slack](docs/slack.md) · [CLI](docs/cli.md) ·
-> [MCP adapters](docs/mcp-adapters.md). Full plan in
-> [docs/PHASE_2_PLAN.md](docs/PHASE_2_PLAN.md).
+> Phase 2 docs: [tracing & CI](docs/features/tracing-and-ci.md) ·
+> [memory](docs/features/memory.md) · [Slack](docs/features/slack.md) · [CLI](docs/features/cli.md) ·
+> [MCP adapters](docs/configuration/mcp-adapters.md). Full plan in
+> [Phase 2 Plan](docs/reference/phase-2-plan.md).
 
-Full phase-by-phase detail in [docs/ROADMAP.md](docs/ROADMAP.md).
+Full phase-by-phase detail in [Roadmap](docs/reference/roadmap.md).
 
 ## License
 

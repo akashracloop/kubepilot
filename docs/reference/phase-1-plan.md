@@ -2,7 +2,7 @@
 
 > **Goal:** Ship a working, read-only, autonomous incident investigator for any workload on a single Kubernetes cluster, distributed as a Helm chart. Demonstrable end-to-end in 12 weeks of focused work.
 
-> Reference: [ARCHITECTURE.md](./ARCHITECTURE.md) (the *what*), this doc (the *how*), [ROADMAP.md](./ROADMAP.md) (the *when across phases*).
+> Reference: [ARCHITECTURE.md](architecture.md) (the *what*), this doc (the *how*), [ROADMAP.md](roadmap.md) (the *when across phases*).
 
 ---
 
@@ -381,4 +381,4 @@ If any step needs manual intervention or doesn't work first try, Phase 1 isn't d
 
 ## 12. After Phase 1
 
-When all checkboxes above are green, move to [ROADMAP.md](./ROADMAP.md) Phase 2. **Do not start Phase 2 work before Phase 1 ships.** Scope discipline is the single biggest factor in this project succeeding.
+When all checkboxes above are green, move to [ROADMAP.md](roadmap.md) Phase 2. **Do not start Phase 2 work before Phase 1 ships.** Scope discipline is the single biggest factor in this project succeeding.
