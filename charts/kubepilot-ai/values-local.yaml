@@ -19,6 +19,7 @@ llm:
     routing: { provider: openai, model: gpt-4o-mini }
     analysis: { provider: openai, model: gpt-4o-mini }
     summarization: { provider: openai, model: gpt-4o-mini }
+    critique: { provider: openai, model: gpt-4o-mini } # Phase 3 critic
   secretName: kubepilot-llm-credentials
   credentials: {} # provided out-of-band by scripts/minikube-up.sh
 

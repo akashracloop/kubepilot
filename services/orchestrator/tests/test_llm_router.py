@@ -87,3 +87,31 @@ def test_fake_provider_satisfies_protocol() -> None:
     # Protocol conformance — runtime_checkable on LLMProvider lets us assert this.
     fake = FakeProvider()
     assert isinstance(fake, LLMProvider)
+
+
+@pytest.mark.asyncio
+async def test_router_falls_back_to_analysis_for_unconfigured_role() -> None:
+    """An unconfigured role (e.g. Phase 3 'critique') degrades to the analysis
+    binding instead of failing the whole investigation."""
+    fake = FakeProvider()
+    router = LLMRouter(
+        providers={"fake": fake},
+        role_bindings={
+            Role.ROUTING: LLMRoleBinding(provider="fake", model="fake-mini"),
+            Role.ANALYSIS: LLMRoleBinding(provider="fake", model="fake-pro"),
+            # No CRITIQUE binding on purpose.
+        },
+    )
+    resp = await router.chat(role=Role.CRITIQUE, messages=[Message(role="user", content="hi")])
+    assert resp.content == "ok"
+    assert fake.calls[-1]["model"] == "fake-pro"  # used the analysis binding
+
+
+@pytest.mark.asyncio
+async def test_router_raises_when_no_binding_and_no_analysis_fallback() -> None:
+    router = LLMRouter(
+        providers={},
+        role_bindings={Role.ROUTING: LLMRoleBinding(provider="fake", model="m")},
+    )
+    with pytest.raises(ProviderNotConfigured, match="no analysis fallback"):
+        await router.chat(role=Role.CRITIQUE, messages=[Message(role="user", content="hi")])

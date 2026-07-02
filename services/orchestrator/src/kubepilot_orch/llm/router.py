@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import structlog
 from pydantic import BaseModel
 
 from kubepilot_orch.llm.base import (
@@ -29,6 +30,8 @@ from kubepilot_orch.llm.base import (
 
 if TYPE_CHECKING:
     from kubepilot_orch.config import LLMRoleBinding
+
+log = structlog.get_logger(__name__)
 
 
 class LLMRouter:
@@ -54,7 +57,16 @@ class LLMRouter:
     ) -> LLMResponse:
         binding = self._role_bindings.get(role)
         if binding is None:
-            raise ProviderNotConfigured(f"No LLM binding configured for role={role.value}")
+            # Fall back to the analysis (strong-reasoning) role for any role that
+            # isn't explicitly configured — so a partial roles map (e.g. one missing
+            # the Phase 3 'critique' role) degrades gracefully instead of failing the
+            # whole investigation.
+            binding = self._role_bindings.get(Role.ANALYSIS)
+            if binding is None:
+                raise ProviderNotConfigured(
+                    f"No LLM binding configured for role={role.value} and no analysis fallback"
+                )
+            log.warning("llm_role_fallback", requested=role.value, fell_back_to="analysis")
 
         provider = self._providers.get(binding.provider)
         if provider is None:
