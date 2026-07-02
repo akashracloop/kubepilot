@@ -230,7 +230,11 @@ async def test_memory_and_knowledge_both_enabled_run_serially() -> None:
         responses=[
             llm_text(
                 json.dumps(
-                    {"recommendations": [Recommendation(title="Check dep", rationale="x").model_dump()]}
+                    {
+                        "recommendations": [
+                            Recommendation(title="Check dep", rationale="x").model_dump()
+                        ]
+                    }
                 )
             )
         ],
