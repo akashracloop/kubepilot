@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "incident_id": "11111111-1111-1111-1111-111111111111",
+  "query": "why is payment-service failing?",
+  "namespace": "prod",
+  "service": "payment-service",
+  "time_window_minutes": 30,
+  "current_step": "rca_completed",
+  "completed_agents": ["kubernetes", "metrics", "logs", "rca"],
+  "evidence": [
+    {
+      "source_agent": "kubernetes",
+      "kind": "pod_state",
+      "summary": "payment-service-0 is in CrashLoopBackOff with exit code 137",
+      "detail": {"restart_count": 12, "exit_code": 137},
+      "severity": "error",
+      "collected_at": "2026-06-23T10:08:00Z"
+    },
+    {
+      "source_agent": "metrics",
+      "kind": "metric_anomaly",
+      "summary": "container memory usage increased 300% in last 15 minutes",
+      "detail": {"baseline_mib": 256, "peak_mib": 1024},
+      "severity": "error",
+      "collected_at": "2026-06-23T10:08:05Z"
+    },
+    {
+      "source_agent": "logs",
+      "kind": "log_pattern",
+      "summary": "5 OutOfMemoryError stack traces in last 10 minutes",
+      "detail": {"runtime": "java", "exception": "java.lang.OutOfMemoryError"},
+      "severity": "critical",
+      "collected_at": "2026-06-23T10:08:07Z"
+    }
+  ],
+  "agent_outputs": {
+    "kubernetes": {
+      "agent_name": "kubernetes",
+      "succeeded": true,
+      "evidence": [],
+      "notes": null,
+      "tokens_used": 1200,
+      "latency_ms": 850
+    },
+    "metrics": {
+      "agent_name": "metrics",
+      "succeeded": true,
+      "evidence": [],
+      "notes": null,
+      "tokens_used": 900,
+      "latency_ms": 1100
+    },
+    "logs": {
+      "agent_name": "logs",
+      "succeeded": true,
+      "evidence": [],
+      "notes": null,
+      "tokens_used": 1500,
+      "latency_ms": 1300
+    }
+  },
+  "rca": {
+    "root_cause": "OOMKilled due to memory leak introduced in deployment v1.24.8",
+    "root_cause_category": "OOMKilled",
+    "confidence": 0.92,
+    "evidence_refs": [0, 1, 2],
+    "reasoning": "Memory usage spiked 300% shortly after deploy v1.24.8; pods exited with code 137 (SIGKILL on OOM) and Java OOM stack traces in logs corroborate.",
+    "recommendations": [
+      "Rollback deployment to v1.24.7",
+      "Increase memory limit to 2Gi as short-term mitigation",
+      "Investigate cache growth in the new code path"
+    ]
+  },
+  "confidence": 0.92,
+  "failed_with": null,
+  "started_at": "2026-06-23T10:07:00Z",
+  "finished_at": "2026-06-23T10:08:30Z"
+}

@@ -1,0 +1,61 @@
+{{- if .Values.mcp.k8s.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-mcp-k8s
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-k8s
+spec:
+  replicas: {{ .Values.mcp.k8s.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kubepilot.name" . }}
+      app.kubernetes.io/component: mcp-k8s
+  template:
+    metadata:
+      labels:
+        {{- include "kubepilot.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-k8s
+    spec:
+      serviceAccountName: {{ include "kubepilot.fullname" . }}-mcp-k8s
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp-k8s
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.mcp.k8s.image.repository }}:{{ .Values.mcp.k8s.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /mcp/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /mcp/health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+{{- end }}

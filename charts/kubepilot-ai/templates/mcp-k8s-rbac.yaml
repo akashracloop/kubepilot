@@ -1,0 +1,125 @@
+{{- if .Values.mcp.k8s.enabled }}
+{{- $scope := .Values.mcp.k8s.rbac.scope | default "cluster" -}}
+{{- $namespaces := .Values.mcp.k8s.rbac.namespaces | default list -}}
+
+{{- /*
+  Read-only Role/ClusterRole bound to the mcp-k8s ServiceAccount.
+
+  WRITE VERBS ARE FORBIDDEN HERE. The verb list is restricted to
+  get/list/watch, which is the *architectural* read-only guarantee from
+  docs/ARCHITECTURE.md §8.3 / §10.3. Tests in services/mcp-k8s/tests/test_rbac.py
+  enforce that this template never grows write verbs.
+*/ -}}
+
+{{- if eq $scope "cluster" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-mcp-k8s-reader
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-k8s
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - events
+      - nodes
+      - services
+      - configmaps
+      - persistentvolumeclaims
+      - namespaces
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-mcp-k8s-reader
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-k8s
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubepilot.fullname" . }}-mcp-k8s-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kubepilot.fullname" . }}-mcp-k8s
+    namespace: {{ .Release.Namespace }}
+
+{{- else if eq $scope "namespace" }}
+{{- if not $namespaces }}
+{{- fail "mcp.k8s.rbac.scope is 'namespace' but mcp.k8s.rbac.namespaces is empty" }}
+{{- end }}
+{{- range $ns := $namespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kubepilot.fullname" $ }}-mcp-k8s-reader
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kubepilot.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: mcp-k8s
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - events
+      - services
+      - configmaps
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kubepilot.fullname" $ }}-mcp-k8s-reader
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kubepilot.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: mcp-k8s
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kubepilot.fullname" $ }}-mcp-k8s-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kubepilot.fullname" $ }}-mcp-k8s
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+
+{{- else }}
+{{- fail (printf "Invalid mcp.k8s.rbac.scope: %s (must be 'cluster' or 'namespace')" $scope) }}
+{{- end }}
+{{- end }}

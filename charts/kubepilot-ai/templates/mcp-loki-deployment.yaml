@@ -1,0 +1,70 @@
+{{- if .Values.mcp.loki.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-mcp-loki
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-loki
+spec:
+  replicas: {{ .Values.mcp.loki.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kubepilot.name" . }}
+      app.kubernetes.io/component: mcp-loki
+  template:
+    metadata:
+      labels:
+        {{- include "kubepilot.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-loki
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10003
+        runAsGroup: 10003
+        fsGroup: 10003
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp-loki
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.mcp.loki.image.repository }}:{{ .Values.mcp.loki.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: KUBEPILOT_LOKI_URL
+              value: {{ .Values.mcp.loki.upstream.url | quote }}
+            {{- if .Values.mcp.loki.upstream.bearerTokenSecretRef }}
+            - name: KUBEPILOT_LOKI_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mcp.loki.upstream.bearerTokenSecretRef }}
+                  key: token
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /mcp/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /mcp/health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+{{- end }}

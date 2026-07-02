@@ -1,0 +1,70 @@
+{{- if .Values.mcp.prom.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-mcp-prom
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-prom
+spec:
+  replicas: {{ .Values.mcp.prom.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kubepilot.name" . }}
+      app.kubernetes.io/component: mcp-prom
+  template:
+    metadata:
+      labels:
+        {{- include "kubepilot.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-prom
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        fsGroup: 10002
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp-prom
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.mcp.prom.image.repository }}:{{ .Values.mcp.prom.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: KUBEPILOT_PROMETHEUS_URL
+              value: {{ .Values.mcp.prom.upstream.url | quote }}
+            {{- if .Values.mcp.prom.upstream.bearerTokenSecretRef }}
+            - name: KUBEPILOT_PROMETHEUS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mcp.prom.upstream.bearerTokenSecretRef }}
+                  key: token
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /mcp/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /mcp/health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+{{- end }}

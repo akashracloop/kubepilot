@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.11.x"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install workspace
+        run: uv sync --all-packages
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy)
+        run: uv run mypy services/
+        continue-on-error: true  # strict mypy is aspirational in W1; ratchet up later
+
+      - name: Unit tests
+        run: uv run pytest -m "not integration and not live_llm" --cov=services --cov-report=term
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: "v3.17.3"
+      - name: Helm lint
+        run: |
+          helm lint charts/kubepilot-ai

@@ -1,0 +1,25 @@
+apiVersion: v2
+name: kubepilot-ai
+description: KubePilot AI — Agentic SRE Platform for Kubernetes
+type: application
+version: 0.1.0-dev
+appVersion: "0.1.0-dev"
+home: https://github.com/akashsahani2001/kubepilot-ai
+sources:
+  - https://github.com/akashsahani2001/kubepilot-ai
+maintainers:
+  - name: Akash Kumar Sahani
+icon: ""
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - sre
+  - agentic
+  - kubernetes
+  - observability
+  - rca
+  - incident-response
+  - ai-ops
+
+# Subchart deps come online in W11 (Helm packaging milestone).
+# Pinned versions will be added then.
+dependencies: []

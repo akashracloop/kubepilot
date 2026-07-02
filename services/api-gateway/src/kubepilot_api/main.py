@@ -1,0 +1,114 @@
+"""FastAPI entry point.
+
+Phase 1 layout:
+
+  /health, /ready                                   — no auth
+  /investigations (POST, GET, GET-by-id, GET stream) — X-API-Key auth
+
+The graph + repo + bus are bound at app construction time and stored on
+``app.state``. Tests use ``build_app`` directly to inject in-memory repos
+and a scripted graph; production uses ``app`` from this module.
+"""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
+
+import structlog
+from fastapi import FastAPI
+
+from kubepilot_api import __version__
+from kubepilot_api.auth import make_api_key_dep
+from kubepilot_api.config import ApiSettings, load_settings
+from kubepilot_api.orchestrator_client import InvestigationOrchestrator
+from kubepilot_api.pubsub import InvestigationBus
+from kubepilot_api.repository import (
+    InMemoryInvestigationRepository,
+    InvestigationRepository,
+    PostgresInvestigationRepository,
+)
+from kubepilot_api.routes.health import router as health_router
+from kubepilot_api.routes.investigations import make_router as make_investigations_router
+
+log = structlog.get_logger(__name__)
+
+
+def _default_compiled_graph(settings: ApiSettings) -> Any:
+    """Build the production graph wired to real MCP clients + the configured LLM router.
+
+    Imported lazily so tests can build the app without the langchain dependencies
+    when they pass in their own ``compiled_graph``.
+    """
+    from kubepilot_orch.config import load_settings as load_orch_settings  # noqa: PLC0415
+    from kubepilot_orch.graph import AgentDeps, build_graph  # noqa: PLC0415
+    from kubepilot_orch.llm.factory import build_router  # noqa: PLC0415
+    from kubepilot_orch.mcp.client import MCPClient  # noqa: PLC0415
+
+    orch_settings = load_orch_settings()
+    deps = AgentDeps(
+        llm=build_router(orch_settings),
+        mcp_k8s=MCPClient("mcp-k8s", settings.mcp.k8s),
+        mcp_prom=MCPClient("mcp-prom", settings.mcp.prom),
+        mcp_loki=MCPClient("mcp-loki", settings.mcp.loki),
+    )
+    return build_graph(deps)
+
+
+def _default_repository(settings: ApiSettings) -> InvestigationRepository:
+    if settings.storage == "memory":
+        return InMemoryInvestigationRepository()
+    return PostgresInvestigationRepository(url=settings.db.url)
+
+
+def build_app(
+    *,
+    settings: ApiSettings | None = None,
+    repo: InvestigationRepository | None = None,
+    compiled_graph: Any | None = None,
+) -> FastAPI:
+    """Build a FastAPI app with all dependencies wired.
+
+    Tests pass ``repo`` and ``compiled_graph`` to inject in-memory storage and
+    a scripted graph. Production code calls ``build_app()`` with no args.
+    """
+    settings = settings or load_settings()
+    repo = repo or _default_repository(settings)
+    compiled_graph = compiled_graph if compiled_graph is not None else _default_compiled_graph(settings)
+    bus = InvestigationBus()
+    orchestrator = InvestigationOrchestrator(compiled_graph=compiled_graph, repo=repo, bus=bus)
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+        log.info("api_starting", version=__version__, environment=settings.environment)
+        try:
+            yield
+        finally:
+            log.info("api_stopping")
+            await orchestrator.shutdown()
+            await repo.aclose()
+
+    app = FastAPI(
+        title="KubePilot AI",
+        version=__version__,
+        description="Agentic SRE platform for Kubernetes",
+        lifespan=_lifespan,
+    )
+    app.state.repo = repo
+    app.state.bus = bus
+    app.state.orchestrator = orchestrator
+    app.state.settings = settings
+
+    app.include_router(health_router)
+    app.include_router(make_investigations_router(auth_dep=make_api_key_dep(settings)))
+
+    return app
+
+
+# For uvicorn, use the factory pattern so we don't crash at import time when
+# Postgres/LLM creds aren't configured:
+#
+#   uvicorn --factory kubepilot_api.main:build_app
+#
+# Tests call ``build_app(repo=..., compiled_graph=...)`` directly with in-memory deps.

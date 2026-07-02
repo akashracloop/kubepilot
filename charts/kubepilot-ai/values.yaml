@@ -1,0 +1,98 @@
+# Default values for KubePilot AI.
+# See values-dev.yaml / values-prod-small.yaml / values-prod-air-gapped.yaml for profile overrides.
+
+global:
+  imageRegistry: ghcr.io/akashsahani2001
+  imagePullPolicy: IfNotPresent
+
+# -----------------------------------------------------------------------------
+# LLM provider configuration (BYOK — see docs/llm-providers.md, lands in W11)
+# -----------------------------------------------------------------------------
+llm:
+  defaultProvider: anthropic
+  roles:
+    routing:       { provider: anthropic, model: claude-haiku-4-5-20251001 }
+    analysis:      { provider: anthropic, model: claude-sonnet-4-6 }
+    summarization: { provider: anthropic, model: claude-haiku-4-5-20251001 }
+  secretName: kubepilot-llm-credentials
+  ollama:
+    baseUrl: http://ollama.kubepilot-system.svc.cluster.local:11434
+
+# -----------------------------------------------------------------------------
+# Agent orchestrator
+# -----------------------------------------------------------------------------
+orchestrator:
+  replicaCount: 1
+  image:
+    repository: kubepilot-orch
+    tag: 0.1.0-dev
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+# -----------------------------------------------------------------------------
+# API gateway
+# -----------------------------------------------------------------------------
+apiGateway:
+  replicaCount: 1
+  image:
+    repository: kubepilot-api
+    tag: 0.1.0-dev
+  service:
+    type: ClusterIP
+    port: 8080
+
+# -----------------------------------------------------------------------------
+# MCP servers
+# -----------------------------------------------------------------------------
+mcp:
+  k8s:
+    enabled: true
+    image: { repository: kubepilot-mcp-k8s, tag: 0.1.0-dev }
+    # Read-only RBAC by default. Override scope: "namespace" to limit to listed namespaces.
+    rbac:
+      scope: cluster                # one of: cluster | namespace
+      namespaces: []                # used only when scope == "namespace"
+  prom:
+    enabled: true
+    image: { repository: kubepilot-mcp-prom, tag: 0.1.0-dev }
+    upstream:
+      url: http://prom-server.observability.svc.cluster.local
+      bearerTokenSecretRef: ""      # optional
+  loki:
+    enabled: true
+    image: { repository: kubepilot-mcp-loki, tag: 0.1.0-dev }
+    upstream:
+      url: http://loki.observability.svc.cluster.local:3100
+      bearerTokenSecretRef: ""
+
+# -----------------------------------------------------------------------------
+# Persistence
+# -----------------------------------------------------------------------------
+postgres:
+  enabled: true   # bundled by default; set to false to BYO Postgres
+  # If enabled=false, point us at your own:
+  externalUrl: ""
+
+redis:
+  enabled: true
+  externalUrl: ""
+
+# -----------------------------------------------------------------------------
+# AgentOps observability
+# -----------------------------------------------------------------------------
+agentOps:
+  phoenix:
+    enabled: true   # default — self-hosted, OSS, OTel-GenAI compatible
+  langsmith:
+    enabled: false  # opt-in BYOK
+    apiKeySecretRef: ""
+
+# -----------------------------------------------------------------------------
+# Remediation — DEFAULT-OFF until Phase 4
+# -----------------------------------------------------------------------------
+remediation:
+  enabled: false
