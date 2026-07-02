@@ -66,6 +66,13 @@ async def test_pgvector_memory_roundtrip() -> None:
         assert top.incident_id == incident_id
         assert top.service == "checkout-service"
         assert 0.0 <= similarity <= 1.0
+
+        # Hybrid path: exercise the ts_rank_cd / plainto_tsquery lexical blend.
+        hybrid = await store.search(
+            near, namespace="prod", k=3, query_text="checkout latency regression"
+        )
+        assert hybrid and hybrid[0][0].incident_id == incident_id
+        assert 0.0 <= hybrid[0][1] <= 1.0
     finally:
         await _drop(store, table)
         await store.aclose()
@@ -87,7 +94,9 @@ async def test_pg_knowledge_roundtrip_and_dependents() -> None:
                 last_deploy="2026-07-02T10:00:00Z",
             )
         )
-        await store.upsert(ServiceRecord(service="payments-db", namespace="prod", owner="data-team"))
+        await store.upsert(
+            ServiceRecord(service="payments-db", namespace="prod", owner="data-team")
+        )
 
         got = await store.get("checkout-service", namespace="prod")
         assert got is not None

@@ -9,10 +9,35 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
+
+# Weight on dense (embedding) similarity when blending with the lexical score in
+# hybrid retrieval; the remainder goes to the lexical term. Only applied when a
+# ``query_text`` is supplied — otherwise search is pure dense cosine (unchanged).
+HYBRID_DENSE_WEIGHT = 0.7
+
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def lexical_overlap(query: str, text: str) -> float:
+    """Jaccard token overlap in [0, 1] — the lightweight BM25-style lexical signal."""
+    q = set(_WORD_RE.findall(query.lower()))
+    t = set(_WORD_RE.findall(text.lower()))
+    if not q or not t:
+        return 0.0
+    return len(q & t) / len(q | t)
+
+
+def _blend(dense: float, query_text: str | None, summary: str) -> float:
+    """Combine dense cosine with the lexical overlap when a query_text is given."""
+    if not query_text:
+        return dense
+    lex = lexical_overlap(query_text, summary)
+    return HYBRID_DENSE_WEIGHT * dense + (1.0 - HYBRID_DENSE_WEIGHT) * lex
 
 
 @dataclass
@@ -58,8 +83,13 @@ class MemoryStore(Protocol):
         namespace: str | None = None,
         service: str | None = None,
         k: int = 5,
+        query_text: str | None = None,
     ) -> list[tuple[StoredIncident, float]]:
-        """Return up to ``k`` (incident, cosine_similarity) pairs, most similar first."""
+        """Return up to ``k`` (incident, score) pairs, most similar first.
+
+        ``query_text`` enables hybrid ranking (dense cosine blended with a lexical
+        overlap on the summary); without it the score is pure dense cosine.
+        """
         ...
 
 
@@ -79,12 +109,14 @@ class InMemoryMemoryStore:
         namespace: str | None = None,
         service: str | None = None,
         k: int = 5,
+        query_text: str | None = None,
     ) -> list[tuple[StoredIncident, float]]:
         scored: list[tuple[StoredIncident, float]] = []
         for item in self._items:
             if namespace is not None and item.namespace not in (None, namespace):
                 continue
-            scored.append((item, cosine_similarity(embedding, item.embedding)))
+            dense = cosine_similarity(embedding, item.embedding)
+            scored.append((item, _blend(dense, query_text, item.summary)))
         scored.sort(key=lambda pair: pair[1], reverse=True)
         return scored[:k]
 
@@ -158,25 +190,38 @@ class PgVectorMemoryStore:
         namespace: str | None = None,
         service: str | None = None,
         k: int = 5,
+        query_text: str | None = None,
     ) -> list[tuple[StoredIncident, float]]:
         pool = await self._ensure()
         vec = _vec_literal(embedding)
-        where = ""
-        mid: list[Any] = []
-        if namespace is not None:
-            where = "WHERE namespace = %s"
-            mid.append(namespace)
+        where = "WHERE namespace = %s" if namespace is not None else ""
+        ns_param: list[Any] = [namespace] if namespace is not None else []
+
+        if query_text:
+            # Hybrid: blend dense cosine with a full-text lexical rank on the summary
+            # (ts_rank_cd normalization flag 32 keeps the term in [0, 1)).
+            score_expr = (
+                f"({HYBRID_DENSE_WEIGHT} * (1 - (embedding <=> %s::vector)) "
+                f"+ {1.0 - HYBRID_DENSE_WEIGHT} * "
+                "COALESCE(ts_rank_cd(to_tsvector('english', summary), "
+                "plainto_tsquery('english', %s), 32), 0))"
+            )
+            select_params: list[Any] = [vec, query_text]
+        else:
+            score_expr = "1 - (embedding <=> %s::vector)"
+            select_params = [vec]
+
         async with pool.connection() as conn:
             cur = await conn.execute(
                 f"""
                 SELECT incident_id, summary, root_cause_category, namespace, service,
-                       outcome, occurred_at, 1 - (embedding <=> %s::vector) AS similarity
+                       outcome, occurred_at, {score_expr} AS similarity
                 FROM {self._table}
                 {where}
-                ORDER BY embedding <=> %s::vector
+                ORDER BY similarity DESC
                 LIMIT %s
                 """,
-                [vec, *mid, vec, k],
+                [*select_params, *ns_param, k],
             )
             rows = await cur.fetchall()
         out: list[tuple[StoredIncident, float]] = []
