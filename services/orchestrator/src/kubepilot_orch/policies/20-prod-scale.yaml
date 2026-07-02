@@ -1,0 +1,9 @@
+# Reference policy: scale within budget in prod (operator).
+policies:
+  - name: prod-scale-within-budget
+    roles: [operator, admin]
+    namespaces: [prod]
+    actions: [scale]
+    reversibility: [reversible]
+    max_blast_radius:
+      pods: 20

@@ -1,0 +1,9 @@
+# Reference policy: ConfigMap edits are admin-only (partial reversibility).
+policies:
+  - name: configmap-admin-only
+    roles: [admin]
+    namespaces: [dev, staging, prod]
+    actions: [edit_configmap]
+    reversibility: [reversible, partial]
+    max_blast_radius:
+      pods: 100

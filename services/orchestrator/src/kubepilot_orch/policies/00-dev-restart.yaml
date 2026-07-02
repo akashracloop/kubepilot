@@ -1,0 +1,9 @@
+# Reference policy: liberal restart/scale in non-prod for operators.
+policies:
+  - name: dev-restart-and-scale
+    roles: [operator, admin]
+    namespaces: [dev, staging]
+    actions: [rollout_restart, restart_pod, scale, rollout_undo, patch_image]
+    reversibility: [reversible]
+    max_blast_radius:
+      pods: 25
