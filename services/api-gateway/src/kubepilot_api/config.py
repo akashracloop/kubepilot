@@ -20,9 +20,20 @@ class MCPEndpoints(BaseModel):
     ci: str = ""
 
 
+class KeyPolicy(BaseModel):
+    """What an API key is allowed to do (light multi-tenancy, Phase 2)."""
+
+    role: str = "investigator"  # "viewer" (read-only) | "investigator" (can trigger)
+    namespaces: list[str] = Field(default_factory=list)  # empty = all namespaces
+
+
 class AuthSettings(BaseModel):
-    api_key: str | None = None  # if None, auth is disabled (dev only)
+    api_key: str | None = None  # legacy single key (investigator, all namespaces)
     api_key_header: str = "X-API-Key"
+    # Optional per-key policies. Set via KUBEPILOT_API_AUTH__KEYS as JSON, e.g.
+    # {"<secret>": {"role": "viewer", "namespaces": ["prod"]}}. Takes precedence
+    # over api_key when a presented key matches here.
+    keys: dict[str, KeyPolicy] = Field(default_factory=dict)
 
 
 class ApiSettings(BaseSettings):

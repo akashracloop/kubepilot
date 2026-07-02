@@ -21,7 +21,7 @@ import structlog
 from fastapi import FastAPI
 
 from kubepilot_api import __version__
-from kubepilot_api.auth import make_api_key_dep
+from kubepilot_api.auth import make_principal_dep
 from kubepilot_api.config import ApiSettings, load_settings
 from kubepilot_api.orchestrator_client import InvestigationOrchestrator
 from kubepilot_api.pubsub import InvestigationBus
@@ -174,7 +174,7 @@ def build_app(
         app.state.orchestrator = orchestrator
 
     app.include_router(health_router)
-    app.include_router(make_investigations_router(auth_dep=make_api_key_dep(settings)))
+    app.include_router(make_investigations_router(principal_dep=make_principal_dep(settings)))
 
     return app
 
