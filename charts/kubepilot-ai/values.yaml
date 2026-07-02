@@ -1,40 +1,34 @@
 # Default values for KubePilot AI.
-# See values-dev.yaml / values-prod-small.yaml / values-prod-air-gapped.yaml for profile overrides.
+# Profile overrides: values-dev.yaml / values-prod-small.yaml / values-prod-air-gapped.yaml
 
 global:
   imageRegistry: ghcr.io/akashsahani2001
   imagePullPolicy: IfNotPresent
 
 # -----------------------------------------------------------------------------
-# LLM provider configuration (BYOK — see docs/llm-providers.md, lands in W11)
+# LLM provider configuration (BYOK — see docs/llm-providers.md)
 # -----------------------------------------------------------------------------
 llm:
   defaultProvider: anthropic
   roles:
-    routing:       { provider: anthropic, model: claude-haiku-4-5-20251001 }
-    analysis:      { provider: anthropic, model: claude-sonnet-4-6 }
+    routing: { provider: anthropic, model: claude-haiku-4-5-20251001 }
+    analysis: { provider: anthropic, model: claude-sonnet-4-6 }
     summarization: { provider: anthropic, model: claude-haiku-4-5-20251001 }
-  secretName: kubepilot-llm-credentials
   ollama:
     baseUrl: http://ollama.kubepilot-system.svc.cluster.local:11434
+  vllm:
+    baseUrl: http://vllm.kubepilot-system.svc.cluster.local:8000/v1
+
+  # Credentials. In production prefer `existingSecret` (a Secret you create out
+  # of band). For dev, inline values below render a Secret named
+  # <fullname>-llm-credentials. Keys map to orchestrator env (KUBEPILOT_LLM__*).
+  existingSecret: "" # name of a pre-created Secret; takes precedence when set
+  credentials: {} # e.g. { anthropic_api_key: "sk-ant-...", openai_api_key: "" }
 
 # -----------------------------------------------------------------------------
-# Agent orchestrator
-# -----------------------------------------------------------------------------
-orchestrator:
-  replicaCount: 1
-  image:
-    repository: kubepilot-orch
-    tag: 0.1.0-dev
-  resources:
-    requests:
-      cpu: 200m
-      memory: 512Mi
-    limits:
-      memory: 1Gi
-
-# -----------------------------------------------------------------------------
-# API gateway
+# API gateway — also hosts the LangGraph orchestrator in-process (Phase 1, the
+# orchestrator is a library, not a separate server), so this one Deployment is
+# the app tier. It reads both KUBEPILOT_API_* (gateway) and KUBEPILOT_* (orch).
 # -----------------------------------------------------------------------------
 apiGateway:
   replicaCount: 1
@@ -44,6 +38,37 @@ apiGateway:
   service:
     type: ClusterIP
     port: 8080
+  # Investigation record store: "postgres" or "memory" (dev / no-DB).
+  storage: postgres
+  # LangGraph checkpointer backend: "postgres" (resumable) or "memory" (dev).
+  checkpointer: postgres
+  auth:
+    # If apiKey is set, a Secret <fullname>-api-auth is rendered and the gateway
+    # enforces X-API-Key. Prefer existingSecret in prod (key: API_KEY).
+    apiKey: ""
+    existingSecret: ""
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+# -----------------------------------------------------------------------------
+# Web UI (Next.js)
+# -----------------------------------------------------------------------------
+webUi:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: kubepilot-web-ui
+    tag: 0.1.0-dev
+  service:
+    type: ClusterIP
+    port: 3000
+  # Public base URL the browser uses to reach the API gateway. Override per
+  # ingress/host. Defaults to in-cluster service DNS for port-forward demos.
+  apiBaseUrl: ""
 
 # -----------------------------------------------------------------------------
 # MCP servers
@@ -54,14 +79,14 @@ mcp:
     image: { repository: kubepilot-mcp-k8s, tag: 0.1.0-dev }
     # Read-only RBAC by default. Override scope: "namespace" to limit to listed namespaces.
     rbac:
-      scope: cluster                # one of: cluster | namespace
-      namespaces: []                # used only when scope == "namespace"
+      scope: cluster # one of: cluster | namespace
+      namespaces: [] # used only when scope == "namespace"
   prom:
     enabled: true
     image: { repository: kubepilot-mcp-prom, tag: 0.1.0-dev }
     upstream:
       url: http://prom-server.observability.svc.cluster.local
-      bearerTokenSecretRef: ""      # optional
+      bearerTokenSecretRef: "" # optional
   loki:
     enabled: true
     image: { repository: kubepilot-mcp-loki, tag: 0.1.0-dev }
@@ -70,25 +95,38 @@ mcp:
       bearerTokenSecretRef: ""
 
 # -----------------------------------------------------------------------------
-# Persistence
+# Persistence — bundled single-node Postgres/Redis for dev & prod-small. For
+# production, set enabled=false and point externalUrl at a managed instance.
 # -----------------------------------------------------------------------------
 postgres:
-  enabled: true   # bundled by default; set to false to BYO Postgres
-  # If enabled=false, point us at your own:
-  externalUrl: ""
+  enabled: true
+  image: pgvector/pgvector:pg16 # pgvector for Phase 2 embeddings
+  auth:
+    username: kubepilot
+    password: kubepilot # dev default — override or use externalUrl in prod
+    database: kubepilot
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+  externalUrl: "" # used when enabled=false, e.g. postgresql://user:pass@host:5432/db
 
 redis:
   enabled: true
-  externalUrl: ""
+  image: redis:7-alpine
+  externalUrl: "" # used when enabled=false, e.g. redis://host:6379/0
 
 # -----------------------------------------------------------------------------
 # AgentOps observability
 # -----------------------------------------------------------------------------
 agentOps:
   phoenix:
-    enabled: true   # default — self-hosted, OSS, OTel-GenAI compatible
+    enabled: true # default — self-hosted, OSS, OTel-GenAI compatible
+    image: arizephoenix/phoenix:latest
+    service:
+      port: 6006
   langsmith:
-    enabled: false  # opt-in BYOK
+    enabled: false # opt-in BYOK
     apiKeySecretRef: ""
 
 # -----------------------------------------------------------------------------

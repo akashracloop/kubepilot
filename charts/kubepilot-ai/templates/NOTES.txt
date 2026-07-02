@@ -1,0 +1,45 @@
+KubePilot AI ({{ .Chart.AppVersion }}) installed into namespace "{{ .Release.Namespace }}".
+
+Components:
+  - api-gateway (hosts the LangGraph orchestrator in-process)
+  {{- if .Values.webUi.enabled }}
+  - web-ui
+  {{- end }}
+  - mcp-k8s{{ if .Values.mcp.prom.enabled }}, mcp-prom{{ end }}{{ if .Values.mcp.loki.enabled }}, mcp-loki{{ end }}
+  {{- if .Values.postgres.enabled }}
+  - postgres (bundled)
+  {{- end }}
+  {{- if .Values.redis.enabled }}
+  - redis (bundled)
+  {{- end }}
+  {{- if .Values.agentOps.phoenix.enabled }}
+  - phoenix (AgentOps traces)
+  {{- end }}
+
+1. Reach the API gateway:
+
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "kubepilot.fullname" . }}-api-gateway {{ .Values.apiGateway.service.port }}:{{ .Values.apiGateway.service.port }}
+
+{{- if .Values.webUi.enabled }}
+
+2. Reach the Web UI:
+
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "kubepilot.fullname" . }}-web-ui {{ .Values.webUi.service.port }}:{{ .Values.webUi.service.port }}
+   open http://localhost:{{ .Values.webUi.service.port }}
+{{- end }}
+
+{{ if not (or .Values.apiGateway.auth.apiKey .Values.apiGateway.auth.existingSecret) -}}
+WARNING: no API auth key configured — the gateway is OPEN (dev only). Set
+apiGateway.auth.apiKey or apiGateway.auth.existingSecret for a protected install.
+{{- else -}}
+3. Trigger an investigation (X-API-Key required):
+
+   curl -sS -X POST http://localhost:{{ .Values.apiGateway.service.port }}/investigations \
+     -H "X-API-Key: <your-key>" -H "Content-Type: application/json" \
+     -d '{"query":"why is payment-service failing?","namespace":"prod","service":"payment-service"}'
+{{- end }}
+
+{{ if not (or .Values.llm.existingSecret (gt (len (keys .Values.llm.credentials)) 0)) -}}
+NOTE: no LLM credentials configured. Cloud providers need llm.credentials or
+llm.existingSecret; air-gapped installs use Ollama/vLLM (no key required).
+{{- end }}

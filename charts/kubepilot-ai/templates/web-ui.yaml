@@ -1,0 +1,80 @@
+{{- if .Values.webUi.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-web-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web-ui
+spec:
+  replicas: {{ .Values.webUi.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kubepilot.name" . }}
+      app.kubernetes.io/component: web-ui
+  template:
+    metadata:
+      labels:
+        {{- include "kubepilot.labels" . | nindent 8 }}
+        app.kubernetes.io/component: web-ui
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web-ui
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.webUi.image.repository }}:{{ .Values.webUi.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            # Browser-facing API base URL. Empty default assumes a port-forward
+            # to the gateway on localhost:8080; set to your ingress host in prod.
+            - name: NEXT_PUBLIC_API_BASE_URL
+              value: {{ .Values.webUi.apiBaseUrl | default "http://localhost:8080" | quote }}
+            {{- if or .Values.apiGateway.auth.existingSecret .Values.apiGateway.auth.apiKey }}
+            - name: NEXT_PUBLIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kubepilot.apiAuth.secretName" . }}
+                  key: KUBEPILOT_API_AUTH__API_KEY
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-web-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web-ui
+spec:
+  type: {{ .Values.webUi.service.type }}
+  ports:
+    - port: {{ .Values.webUi.service.port }}
+      targetPort: http
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "kubepilot.name" . }}
+    app.kubernetes.io/component: web-ui
+{{- end }}

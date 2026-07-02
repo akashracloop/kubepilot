@@ -1,0 +1,35 @@
+# Dev profile — laptop kind/minikube. ~1.5 GB RAM, 1 vCPU.
+# Everything in-memory where possible; no persistence; AgentOps off.
+#
+#   helm install kubepilot-ai ./charts/kubepilot-ai -f charts/kubepilot-ai/values-dev.yaml
+
+apiGateway:
+  storage: memory # investigation records in-process
+  checkpointer: memory # no cross-restart resume in dev
+  auth:
+    apiKey: "dev-key" # dev convenience — renders an api-auth Secret
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+# In-cluster datastores off — memory backends don't need them.
+postgres:
+  enabled: false
+redis:
+  enabled: false
+
+agentOps:
+  phoenix:
+    enabled: false
+
+webUi:
+  enabled: true
+
+# LLM: set your key here for a real dev run, or point roles at a local Ollama.
+llm:
+  credentials: {}
+  # credentials:
+  #   anthropic_api_key: "sk-ant-..."

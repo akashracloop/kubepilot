@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-api-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+spec:
+  replicas: {{ .Values.apiGateway.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kubepilot.name" . }}
+      app.kubernetes.io/component: api-gateway
+  template:
+    metadata:
+      labels:
+        {{- include "kubepilot.labels" . | nindent 8 }}
+        app.kubernetes.io/component: api-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api-gateway
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.apiGateway.image.repository }}:{{ .Values.apiGateway.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          command: ["uvicorn", "--factory", "kubepilot_api.main:build_app", "--host", "0.0.0.0", "--port", "8080"]
+          env:
+            # ---- API gateway settings (KUBEPILOT_API_*) ----
+            - name: KUBEPILOT_API_ENVIRONMENT
+              value: production
+            - name: KUBEPILOT_API_STORAGE
+              value: {{ .Values.apiGateway.storage | quote }}
+            - name: KUBEPILOT_API_CHECKPOINTER
+              value: {{ .Values.apiGateway.checkpointer | quote }}
+            {{- if or .Values.postgres.enabled .Values.postgres.externalUrl }}
+            - name: KUBEPILOT_API_DB__URL
+              value: {{ include "kubepilot.postgres.url" . | quote }}
+            {{- end }}
+            - name: KUBEPILOT_API_MCP__K8S
+              value: "http://mcp-k8s.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            - name: KUBEPILOT_API_MCP__PROM
+              value: "http://mcp-prom.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            - name: KUBEPILOT_API_MCP__LOKI
+              value: "http://mcp-loki.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            # ---- Orchestrator settings (in-process, KUBEPILOT_*) ----
+            {{- if or .Values.postgres.enabled .Values.postgres.externalUrl }}
+            - name: KUBEPILOT_DB__URL
+              value: {{ include "kubepilot.postgres.url" . | quote }}
+            {{- end }}
+            {{- if or .Values.redis.enabled .Values.redis.externalUrl }}
+            - name: KUBEPILOT_REDIS__URL
+              value: {{ include "kubepilot.redis.url" . | quote }}
+            {{- end }}
+            - name: KUBEPILOT_LLM__DEFAULT_PROVIDER
+              value: {{ .Values.llm.defaultProvider | quote }}
+            - name: KUBEPILOT_LLM__ROLES
+              value: {{ .Values.llm.roles | toJson | quote }}
+            - name: KUBEPILOT_LLM__OLLAMA_BASE_URL
+              value: {{ .Values.llm.ollama.baseUrl | quote }}
+            - name: KUBEPILOT_LLM__VLLM_BASE_URL
+              value: {{ .Values.llm.vllm.baseUrl | quote }}
+            {{- if .Values.agentOps.phoenix.enabled }}
+            - name: KUBEPILOT_OTEL_EXPORTER_ENDPOINT
+              value: "http://{{ include "kubepilot.fullname" . }}-phoenix.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.agentOps.phoenix.service.port }}"
+            {{- end }}
+          envFrom:
+            {{- if or .Values.llm.existingSecret (gt (len (keys .Values.llm.credentials)) 0) }}
+            - secretRef:
+                name: {{ include "kubepilot.llm.secretName" . }}
+            {{- end }}
+            {{- if or .Values.apiGateway.auth.existingSecret .Values.apiGateway.auth.apiKey }}
+            - secretRef:
+                name: {{ include "kubepilot.apiAuth.secretName" . }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.apiGateway.resources | nindent 12 }}

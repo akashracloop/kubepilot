@@ -1,0 +1,37 @@
+# prod-small profile — single-cluster SRE team. ~6 GB RAM, 3 vCPU.
+# Bundled Postgres (persistent) + Redis, Postgres-backed checkpointer, Phoenix on.
+#
+#   helm install kubepilot-ai ./charts/kubepilot-ai -f charts/kubepilot-ai/values-prod-small.yaml \
+#     --set-string apiGateway.auth.apiKey=$(openssl rand -hex 24)
+#
+# For real production, prefer a managed Postgres (postgres.enabled=false +
+# postgres.externalUrl) and an out-of-band Secret (llm.existingSecret,
+# apiGateway.auth.existingSecret).
+
+apiGateway:
+  replicaCount: 1
+  storage: postgres
+  checkpointer: postgres
+  auth:
+    apiKey: "" # REQUIRED: set via --set-string or auth.existingSecret
+
+postgres:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+
+redis:
+  enabled: true
+
+agentOps:
+  phoenix:
+    enabled: true
+
+webUi:
+  enabled: true
+
+llm:
+  defaultProvider: anthropic
+  existingSecret: "" # prefer a pre-created Secret in prod
+  credentials: {}
