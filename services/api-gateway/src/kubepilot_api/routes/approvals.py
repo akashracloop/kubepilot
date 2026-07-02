@@ -148,3 +148,45 @@ def make_approval_router(*, principal_dep) -> APIRouter:  # type: ignore[no-unty
         return await _decide(request, incident_id, principal, body, "rejected")
 
     return router
+
+
+class KillSwitchRequest(BaseModel):
+    enabled: bool
+
+
+def make_kill_switch_router(*, principal_dep) -> APIRouter:  # type: ignore[no-untyped-def]
+    """Global remediation kill switch — halts all execution immediately (admin-only)."""
+    router = APIRouter(prefix="/remediation")
+
+    @router.get("/kill-switch")
+    async def get_kill_switch(principal: Principal = Depends(principal_dep)) -> dict[str, Any]:
+        from kubepilot_orch.remediation import executor
+
+        return {"enabled": executor.kill_switch_active()}
+
+    @router.post("/kill-switch")
+    async def set_kill_switch(
+        body: KillSwitchRequest, principal: Principal = Depends(principal_dep)
+    ) -> dict[str, Any]:
+        from kubepilot_orch.remediation import executor
+
+        if not principal.is_admin():
+            emit_audit(
+                actor_role=principal.role,
+                action="set_kill_switch",
+                resource="remediation/kill-switch",
+                decision="denied",
+                reason="admin_required",
+            )
+            raise HTTPException(status_code=403, detail="only admin can toggle the kill switch")
+        executor.set_kill_switch(body.enabled)
+        emit_audit(
+            actor_role=principal.role,
+            action="set_kill_switch",
+            resource="remediation/kill-switch",
+            decision="allowed",
+            enabled=body.enabled,
+        )
+        return {"enabled": executor.kill_switch_active()}
+
+    return router

@@ -148,6 +148,22 @@ def _deps() -> AgentDeps:
     )
 
 
+def _write_handler(applied: bool) -> Any:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/mcp/tools":
+            return httpx.Response(200, json={"tools": []})
+        body = json.loads(request.content.decode())
+        return httpx.Response(
+            200,
+            json={
+                "tool": body["tool"],
+                "result": {"applied": applied, "dry_run": not applied, "preview": "did it"},
+            },
+        )
+
+    return handler
+
+
 @pytest.mark.asyncio
 async def test_graph_interrupts_before_execute_then_resumes_on_approval() -> None:
     deps = _deps()
@@ -223,3 +239,43 @@ async def test_remediation_off_by_default_no_interrupt() -> None:
     assert "execute_remediation" not in set(graph.get_graph().nodes)
     for c in (deps.mcp_k8s, deps.mcp_prom, deps.mcp_loki):
         await c.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resume_executes_approved_plan_via_write_mcp() -> None:
+    """With a policy + write MCP wired in, an approved plan actually executes on
+    resume: an execution record is written and the outcome is closed."""
+    from kubepilot_orch.remediation.policy import load_policies_from_yaml
+
+    deps = _deps()
+    deps.mcp_write = build_mcp_client(_write_handler(applied=True), server_name="mcp-k8s-write")
+    deps.policy = load_policies_from_yaml(
+        "policies:\n  - name: prod-rollback\n    roles: [operator, admin]\n"
+        "    namespaces: [prod]\n    actions: [rollout_undo]\n    reversibility: [reversible]\n"
+    )
+    graph = build_graph(deps, checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "incident-exec"}}
+    try:
+        await graph.ainvoke(
+            {
+                "incident_id": uuid.uuid4(),
+                "query": "why is checkout slow?",
+                "namespace": "prod",
+                "service": "checkout",
+                "started_at": _now(),
+            },
+            config,
+        )
+        appr = approval.build_approval(
+            action_index=0, decision="approved", approver_role="operator"
+        )
+        await graph.aupdate_state(config, {"approvals": [appr]})
+        resumed = await graph.ainvoke(None, config)
+    finally:
+        for c in (deps.mcp_k8s, deps.mcp_prom, deps.mcp_loki, deps.mcp_write):
+            await c.aclose()
+
+    assert resumed["remediation_outcome"] == "closed"
+    assert len(resumed["executions"]) == 1
+    assert resumed["executions"][0].status == "succeeded"
+    assert resumed["executions"][0].tool == "rollout_undo"

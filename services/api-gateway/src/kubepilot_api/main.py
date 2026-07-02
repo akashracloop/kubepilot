@@ -272,10 +272,11 @@ def build_app(
     principal_dep = make_principal_dep(settings)
     app.include_router(health_router)
     app.include_router(make_investigations_router(principal_dep=principal_dep))
-    # Phase 4: HITL remediation approval endpoints (RBAC-gated, audited).
-    from kubepilot_api.routes.approvals import make_approval_router
+    # Phase 4: HITL remediation approval + the global kill switch (RBAC + audited).
+    from kubepilot_api.routes.approvals import make_approval_router, make_kill_switch_router
 
     app.include_router(make_approval_router(principal_dep=principal_dep))
+    app.include_router(make_kill_switch_router(principal_dep=principal_dep))
 
     return app
 

@@ -104,6 +104,10 @@ class AgentDeps:
     # approval outcome only.
     enable_remediation: bool = False
     mcp_write: MCPClient | None = None
+    # Execution policy (default-deny). Required for any action to actually run;
+    # without it (or without mcp_write) the execute node resolves the approval
+    # outcome but performs no writes.
+    policy: Any | None = None  # RemediationPolicy | None
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -233,19 +237,33 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
     async def execute_remediation_node(state: InvestigationState) -> dict[str, Any]:
         # The graph interrupts BEFORE this node (interrupt_before below) so a human
         # can approve/reject; the API records the decision into the checkpointed
-        # state, then the run resumes here. W5 resolves the approval outcome only —
-        # the real executor (mcp_write + audit + rollback) is wired in W7.
-        from kubepilot_orch.remediation import approval
+        # state, then the run resumes here.
+        from kubepilot_orch.remediation import approval, executor
 
         plan = state.remediation_plan
         if plan is None or not plan.actions:
             return {"current_step": "remediation_skipped", "completed_agents": ["remediation_exec"]}
         status = approval.plan_status(plan, state.approvals, generated_at=plan.generated_at)
-        # Only an "approved" plan would proceed to execution (W7); everything else
-        # (rejected/expired/pending) is recorded as the terminal remediation outcome.
+
+        # Only an approved plan with an executor + policy wired in actually runs.
+        # Anything else (rejected/expired/pending, or no executor) resolves the
+        # outcome without any write.
+        if status != "approved" or deps.mcp_write is None or deps.policy is None:
+            return {
+                "remediation_outcome": status,
+                "current_step": "remediation_resolved",
+                "completed_agents": ["remediation_exec"],
+            }
+
+        records = await executor.execute_plan(
+            plan, state.approvals, mcp_write=deps.mcp_write, policy=deps.policy
+        )
+        failed = any(r.status == "failed" for r in records)
         return {
-            "remediation_outcome": status,
-            "current_step": "remediation_resolved",
+            "executions": records,
+            # W9 post-validation refines this; for now, failure → reopened.
+            "remediation_outcome": "reopened" if failed else "closed",
+            "current_step": "remediation_executed",
             "completed_agents": ["remediation_exec"],
         }
 

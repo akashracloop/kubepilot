@@ -150,3 +150,30 @@ async def test_viewer_cannot_approve(client: httpx.AsyncClient) -> None:
         f"/investigations/{_INCIDENT}/approve", headers=_h("viewer-key"), json={"action_index": 0}
     )
     assert r.status_code == 403
+
+
+# ---- kill switch (admin-only) ---------------------------------------------
+
+
+async def test_kill_switch_admin_only(client: httpx.AsyncClient) -> None:
+    from kubepilot_orch.remediation import executor
+
+    executor.set_kill_switch(False)
+    # Operator is denied.
+    denied = await client.post(
+        "/remediation/kill-switch", headers=_h("operator-key"), json={"enabled": True}
+    )
+    assert denied.status_code == 403
+    assert executor.kill_switch_active() is False
+
+    # Admin can enable it.
+    ok = await client.post(
+        "/remediation/kill-switch", headers=_h("admin-key"), json={"enabled": True}
+    )
+    assert ok.status_code == 200 and ok.json()["enabled"] is True
+    assert executor.kill_switch_active() is True
+
+    # Reflected on GET; then reset.
+    got = await client.get("/remediation/kill-switch", headers=_h("operator-key"))
+    assert got.json()["enabled"] is True
+    executor.set_kill_switch(False)
