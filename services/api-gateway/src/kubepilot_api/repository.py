@@ -18,6 +18,9 @@ from kubepilot_orch.state import InvestigationState
 # Status lifecycle.
 PENDING = "pending"
 RUNNING = "running"
+# Phase 4: the graph interrupted before executing a remediation plan and is
+# parked waiting for a human decision (HITL). A resume moves it back to RUNNING.
+PENDING_APPROVAL = "pending_approval"
 COMPLETED = "completed"
 FAILED = "failed"
 

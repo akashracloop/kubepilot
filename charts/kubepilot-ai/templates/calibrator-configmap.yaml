@@ -1,0 +1,20 @@
+{{- if and .Values.apiGateway.phase3.calibratorPath .Values.apiGateway.phase3.calibratorJson }}
+{{- /*
+  Trained isotonic confidence calibrator (IsotonicCalibrator.to_dict() JSON),
+  produced by `python -m eval.harness.run_eval --emit-calibrator <path>`. Only
+  rendered when both calibratorPath and calibratorJson are set; mounted at the
+  directory of calibratorPath with the file's basename as its key. Without it the
+  gateway loads no calibrator and finalize skips empirical calibration.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-calibrator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: calibration
+data:
+  {{ base .Values.apiGateway.phase3.calibratorPath }}: |
+    {{- .Values.apiGateway.phase3.calibratorJson | nindent 4 }}
+{{- end }}

@@ -112,6 +112,22 @@ class ApiSettings(BaseSettings):
     # Optional path to an operator-provided execution-policy YAML (a mounted
     # ConfigMap). None → the shipped reference policy set (still default-deny).
     remediation_policy_path: str | None = None
+    # Optional PromQL for the post-remediation validation error-rate signal. When
+    # set, the execute node compares this metric before/after the write and
+    # auto-rolls-back reversible actions on a regression. None → restarts-only
+    # validation (workload-agnostic; no PromQL assumptions).
+    remediation_signal_query: str | None = None
+    # Phase 4 W10 self-healing (autonomous fixes, still fully gated). Comma-separated
+    # opt-in pattern names (see selfheal.PATTERNS: imagepull_revert, crashloop_restart).
+    # Empty → no autonomy; every remediation goes through the HITL interrupt.
+    remediation_selfheal_patterns: str = ""
+    remediation_selfheal_role: str = "operator"
+
+    @property
+    def selfheal_pattern_set(self) -> frozenset[str]:
+        return frozenset(
+            p.strip() for p in self.remediation_selfheal_patterns.split(",") if p.strip()
+        )
 
 
 def load_settings() -> ApiSettings:

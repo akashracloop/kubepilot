@@ -16,6 +16,10 @@ EventType = Literal[
     "investigation_started",
     "node_started",  # any graph node — kubernetes / metrics / logs / rca / recommendation / finalize
     "node_completed",
+    # Phase 4 remediation lifecycle: the graph paused for HITL approval, then
+    # resumed once the decision was recorded.
+    "investigation_awaiting_approval",
+    "investigation_resumed",
     "investigation_completed",
     "investigation_failed",
 ]

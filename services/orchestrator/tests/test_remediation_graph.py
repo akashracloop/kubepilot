@@ -66,14 +66,14 @@ def _spec(name: str, tool: str) -> ScriptedLLM:
     )
 
 
-def _dispatcher() -> Any:
+def _dispatcher(rca_category: str = "DeploymentRegression") -> Any:
     rca = ScriptedLLM(
         name="rca",
         responses=[
             llm_text(
                 RCAReport(
                     root_cause="Deploy v2 regressed latency",
-                    root_cause_category="DeploymentRegression",
+                    root_cause_category=rca_category,
                     confidence=0.85,
                     evidence_refs=[0],
                     reasoning="deploy correlates",
@@ -138,9 +138,9 @@ def _dispatcher() -> Any:
     return Dispatcher()
 
 
-def _deps() -> AgentDeps:
+def _deps(rca_category: str = "DeploymentRegression") -> AgentDeps:
     return AgentDeps(
-        llm=build_router(_dispatcher()),  # type: ignore[arg-type]
+        llm=build_router(_dispatcher(rca_category)),  # type: ignore[arg-type]
         mcp_k8s=build_mcp_client(_tool_handler("list_pods"), server_name="k8s"),
         mcp_prom=build_mcp_client(_tool_handler("query_range"), server_name="prom"),
         mcp_loki=build_mcp_client(_tool_handler("search_exceptions"), server_name="loki"),
@@ -294,9 +294,12 @@ async def test_resume_validates_and_rolls_back_on_regression() -> None:
         "    namespaces: [prod]\n    actions: [rollout_undo]\n    reversibility: [reversible]\n"
     )
 
-    async def _signals(_state: Any) -> Any:
-        # error rate got much worse after the remediation → regression.
-        return {"error_rate": 0.02}, {"error_rate": 0.60}
+    # Single-snapshot signal fetcher: called once pre-write (baseline) then once
+    # post-write. Here the error rate got much worse after → regression.
+    _snapshots = iter([{"error_rate": 0.02}, {"error_rate": 0.60}])
+
+    async def _signals(_state: Any) -> dict[str, float]:
+        return next(_snapshots)
 
     deps.remediation_signal_fn = _signals
 
@@ -326,3 +329,59 @@ async def test_resume_validates_and_rolls_back_on_regression() -> None:
     # rollout_undo has no clean inverse, so no rollback record — but the incident
     # is still reopened because the post-check regressed.
     assert len(resumed["executions"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_selfheal_pattern_executes_autonomously_without_interrupt() -> None:
+    """W10 gap fix: an opt-in self-heal pattern routes around the HITL interrupt
+    and executes autonomously (still policy-gated), reaching a terminal outcome
+    in a single pass."""
+    from kubepilot_orch.remediation.policy import load_policies_from_yaml
+
+    deps = _deps(rca_category="ImagePullBackOff")
+    deps.selfheal_patterns = frozenset({"imagepull_revert"})
+    deps.mcp_write = build_mcp_client(_write_handler(applied=True), server_name="mcp-k8s-write")
+    deps.policy = load_policies_from_yaml(
+        "policies:\n  - name: prod-selfheal\n    roles: [operator, admin]\n"
+        "    namespaces: [prod]\n    actions: [rollout_undo]\n    reversibility: [reversible]\n"
+    )
+
+    graph = build_graph(deps, checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "incident-selfheal"}}
+    result = await graph.ainvoke(
+        {
+            "incident_id": uuid.uuid4(),
+            "query": "checkout pods failing to pull image",
+            "namespace": "prod",
+            "service": "checkout",
+            "started_at": _now(),
+        },
+        config,
+    )
+    # No interrupt: the run completed in one pass (nothing pending).
+    snap = await graph.aget_state(config)
+    assert snap.next == ()
+    # The autonomous action executed and the incident reached a terminal outcome.
+    assert result["executions"], "self-heal should have executed an action"
+    assert result["executions"][0].tool == "rollout_undo"
+    assert result["remediation_outcome"] in ("closed", "reopened")
+
+
+@pytest.mark.asyncio
+async def test_selfheal_disabled_still_interrupts_for_hitl() -> None:
+    """With no enabled patterns the graph keeps the HITL interrupt (unchanged)."""
+    deps = _deps(rca_category="ImagePullBackOff")  # would match, but no pattern enabled
+    graph = build_graph(deps, checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "incident-hitl"}}
+    await graph.ainvoke(
+        {
+            "incident_id": uuid.uuid4(),
+            "query": "q",
+            "namespace": "prod",
+            "service": "checkout",
+            "started_at": _now(),
+        },
+        config,
+    )
+    snap = await graph.aget_state(config)
+    assert snap.next == ("execute_remediation",)

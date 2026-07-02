@@ -57,7 +57,11 @@ apiGateway:
     criticEnabled: true
     knowledgeEnabled: false
     knowledgeSnapshotPath: "" # e.g. /etc/kubepilot/knowledge/snapshot.json (mounted)
-    calibratorPath: "" # e.g. /etc/kubepilot/calibrator.json (mounted)
+    calibratorPath: "" # e.g. /etc/kubepilot/calibrator/calibrator.json (mounted, see calibratorJson)
+    # Inline JSON of a trained isotonic calibrator (IsotonicCalibrator.to_dict()),
+    # produced by `python -m eval.harness.run_eval --emit-calibrator <path>`. When
+    # set, it is mounted as a ConfigMap at calibratorPath. Leave empty to disable.
+    calibratorJson: ""
     promptActiveVersions: {} # e.g. {"rca_agent": "v1"} to roll a prompt back
     timelineLlmLabels: false # opt-in LLM polish of timeline labels (adds a call)
     # Periodic knowledge-graph ingestion (the CronJob trigger). Point

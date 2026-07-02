@@ -162,6 +162,11 @@ spec:
               mountPath: /etc/kubepilot/remediation
               readOnly: true
             {{- end }}
+            {{- if and .Values.apiGateway.phase3.calibratorPath .Values.apiGateway.phase3.calibratorJson }}
+            - name: calibrator
+              mountPath: {{ dir .Values.apiGateway.phase3.calibratorPath }}
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
@@ -169,4 +174,9 @@ spec:
         - name: remediation-policies
           configMap:
             name: {{ include "kubepilot.fullname" . }}-remediation-policies
+        {{- end }}
+        {{- if and .Values.apiGateway.phase3.calibratorPath .Values.apiGateway.phase3.calibratorJson }}
+        - name: calibrator
+          configMap:
+            name: {{ include "kubepilot.fullname" . }}-calibrator
         {{- end }}
