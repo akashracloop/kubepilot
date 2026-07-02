@@ -14,6 +14,7 @@ llm:
     routing: { provider: anthropic, model: claude-haiku-4-5-20251001 }
     analysis: { provider: anthropic, model: claude-sonnet-4-6 }
     summarization: { provider: anthropic, model: claude-haiku-4-5-20251001 }
+    critique: { provider: anthropic, model: claude-sonnet-4-6 } # Phase 3 critic (strong model)
   ollama:
     baseUrl: http://ollama.kubepilot-system.svc.cluster.local:11434
   vllm:

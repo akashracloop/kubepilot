@@ -43,6 +43,7 @@ llm:
     routing: { provider: ollama, model: llama3.1:8b }
     analysis: { provider: vllm, model: qwen2.5:14b }
     summarization: { provider: ollama, model: llama3.1:8b }
+    critique: { provider: vllm, model: qwen2.5:14b } # Phase 3 critic (strong local model)
   ollama:
     baseUrl: http://ollama.kubepilot-system.svc.cluster.local:11434
   vllm:

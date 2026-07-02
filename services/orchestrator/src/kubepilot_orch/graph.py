@@ -29,6 +29,7 @@ finished_at, confidence, rca, recommendations) are owned by serial nodes only.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from typing import Any
 
@@ -238,8 +239,11 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
     # feeding a slice of corroborating context into state before RCA reasons:
     #   - Phase 2 memory     → similar past incidents (state.memory_context)
     #   - Phase 3 knowledge  → cluster graph: owner/deps/SLOs (state.knowledge_context)
-    # They run in parallel; RCA fans in after all of them. With none present the
-    # specialists feed RCA directly (the Phase 1 shape, byte-for-byte unchanged).
+    # They run as a SERIAL chain (memory → knowledge → rca), NOT in parallel: both
+    # collectors write the singleton ``current_step`` field, and LangGraph rejects
+    # two concurrent writes to a non-reducer field. Serial is cheap here (these are
+    # fast retrievals, not LLM calls). With none present the specialists feed RCA
+    # directly (the Phase 1 shape, byte-for-byte unchanged).
     pre_rca: list[str] = []
     if deps.memory is not None:
         graph.add_node("memory", memory_node)
@@ -248,15 +252,17 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         graph.add_node("knowledge", knowledge_node)
         pre_rca.append("knowledge")
 
-    # START → supervisor → fan out to all specialists → (collectors) → rca.
+    # START → supervisor → fan out to all specialists → fan in to the first
+    # collector → serial collector chain → rca.
     graph.add_edge(START, "supervisor")
-    collectors = pre_rca or ["rca"]
+    fan_in = pre_rca[0] if pre_rca else "rca"
     for name in specialists:
         graph.add_edge("supervisor", name)
-        for collector in collectors:
-            graph.add_edge(name, collector)
-    for collector in pre_rca:
-        graph.add_edge(collector, "rca")
+        graph.add_edge(name, fan_in)
+    for earlier, later in itertools.pairwise(pre_rca):
+        graph.add_edge(earlier, later)
+    if pre_rca:
+        graph.add_edge(pre_rca[-1], "rca")
 
     # Phase 3 critic: an adversarial review between RCA and recommendation. When
     # enabled, rca → critic → recommendation; otherwise rca → recommendation.
