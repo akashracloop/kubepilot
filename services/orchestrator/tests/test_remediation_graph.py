@@ -294,9 +294,12 @@ async def test_resume_validates_and_rolls_back_on_regression() -> None:
         "    namespaces: [prod]\n    actions: [rollout_undo]\n    reversibility: [reversible]\n"
     )
 
-    async def _signals(_state: Any) -> Any:
-        # error rate got much worse after the remediation → regression.
-        return {"error_rate": 0.02}, {"error_rate": 0.60}
+    # Single-snapshot signal fetcher: called once pre-write (baseline) then once
+    # post-write. Here the error rate got much worse after → regression.
+    _snapshots = iter([{"error_rate": 0.02}, {"error_rate": 0.60}])
+
+    async def _signals(_state: Any) -> dict[str, float]:
+        return next(_snapshots)
 
     deps.remediation_signal_fn = _signals
 

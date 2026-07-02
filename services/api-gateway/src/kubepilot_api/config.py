@@ -112,6 +112,11 @@ class ApiSettings(BaseSettings):
     # Optional path to an operator-provided execution-policy YAML (a mounted
     # ConfigMap). None → the shipped reference policy set (still default-deny).
     remediation_policy_path: str | None = None
+    # Optional PromQL for the post-remediation validation error-rate signal. When
+    # set, the execute node compares this metric before/after the write and
+    # auto-rolls-back reversible actions on a regression. None → restarts-only
+    # validation (workload-agnostic; no PromQL assumptions).
+    remediation_signal_query: str | None = None
 
 
 def load_settings() -> ApiSettings:

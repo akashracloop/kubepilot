@@ -71,11 +71,13 @@ def _default_compiled_graph(
     if settings.mcp.ci:
         endpoints[Capability.DEPLOYMENT] = settings.mcp.ci
     mcp = build_router_from_endpoints(endpoints)
+    mcp_k8s = mcp.client(Capability.KUBERNETES)
+    mcp_prom = mcp.client(Capability.METRICS)
 
     deps = AgentDeps(
         llm=build_router(orch_settings),
-        mcp_k8s=mcp.client(Capability.KUBERNETES),
-        mcp_prom=mcp.client(Capability.METRICS),
+        mcp_k8s=mcp_k8s,
+        mcp_prom=mcp_prom,
         mcp_loki=mcp.client(Capability.LOGS),
         mcp_tempo=mcp.client(Capability.TRACING) if mcp.has(Capability.TRACING) else None,
         mcp_ci=mcp.client(Capability.DEPLOYMENT) if mcp.has(Capability.DEPLOYMENT) else None,
@@ -87,8 +89,34 @@ def _default_compiled_graph(
         enable_remediation=settings.remediation_enabled,
         mcp_write=_build_write_client(settings) if settings.remediation_enabled else None,
         policy=_build_policy(settings) if settings.remediation_enabled else None,
+        pre_state_fn=_build_pre_state_fn(mcp_k8s) if settings.remediation_enabled else None,
+        remediation_signal_fn=(
+            _build_signal_fn(settings, mcp_k8s, mcp_prom) if settings.remediation_enabled else None
+        ),
     )
     return build_graph(deps, checkpointer=checkpointer)
+
+
+def _build_pre_state_fn(mcp_k8s: Any) -> Any:
+    """Rollback pre-state capture: (action) -> reversible snapshot (Phase 4 B4)."""
+    from kubepilot_orch.remediation import cluster_facts
+
+    async def _pre_state(action: Any) -> Any:
+        return await cluster_facts.capture_pre_state(action, mcp_k8s)
+
+    return _pre_state
+
+
+def _build_signal_fn(settings: ApiSettings, mcp_k8s: Any, mcp_prom: Any) -> Any:
+    """Post-remediation validation signal snapshot: (state) -> dict (Phase 4 B5)."""
+    from kubepilot_orch.remediation import cluster_facts
+
+    async def _signals(state: Any) -> dict[str, float]:
+        return await cluster_facts.gather_signals(
+            state, mcp_k8s, mcp_prom, error_rate_query=settings.remediation_signal_query
+        )
+
+    return _signals
 
 
 def _build_write_client(settings: ApiSettings) -> Any:

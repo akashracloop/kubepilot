@@ -108,11 +108,16 @@ class AgentDeps:
     # without it (or without mcp_write) the execute node resolves the approval
     # outcome but performs no writes.
     policy: Any | None = None  # RemediationPolicy | None
-    # Optional post-remediation signal fetch: (state) -> (before, after) signal
-    # snapshots. When provided, the execute node validates the fix (W9) and
-    # auto-rolls-back reversible actions on a regression (W8). Without it, the
-    # outcome is closed unless an execution failed.
+    # Optional signal snapshot fetch: ``(state) -> {"error_rate": .., "restarts": ..}``.
+    # The execute node calls it once BEFORE writing (baseline) and once AFTER, then
+    # validates the fix (W9) and auto-rolls-back reversible actions on a regression
+    # (W8). Without it, the outcome is closed unless an execution failed.
     remediation_signal_fn: Any | None = None
+    # Optional pre-execution state capture: ``(action) -> {"replicas": ..} | ...``.
+    # Wired into the executor so an auto-rollback has an inverse to apply
+    # (rollback.inverse_action). Without it, only self-inverting actions
+    # (cordon↔uncordon) can be rolled back.
+    pre_state_fn: Any | None = None
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -270,8 +275,16 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
                 "completed_agents": ["remediation_exec"],
             }
 
+        # Capture the baseline signals just before writing, so the post-check has a
+        # genuine pre-remediation comparison point (the incident's un-fixed state).
+        before = await deps.remediation_signal_fn(state) if deps.remediation_signal_fn else None
+
         records = await executor.execute_plan(
-            plan, state.approvals, mcp_write=deps.mcp_write, policy=deps.policy
+            plan,
+            state.approvals,
+            mcp_write=deps.mcp_write,
+            policy=deps.policy,
+            pre_state_fn=deps.pre_state_fn,
         )
         update: dict[str, Any] = {
             "executions": records,
@@ -286,10 +299,10 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         # W9: validate the fix against post-remediation signals; auto-rollback +
         # reopen on regression, close on improvement. Without a signal fetcher we
         # can only conclude the writes succeeded.
-        if deps.remediation_signal_fn is not None:
+        if deps.remediation_signal_fn is not None and before is not None:
             from kubepilot_orch.remediation import validation
 
-            before, after = await deps.remediation_signal_fn(state)
+            after = await deps.remediation_signal_fn(state)
             result = await validation.finalize_remediation(
                 records, before, after, mcp_write=deps.mcp_write
             )

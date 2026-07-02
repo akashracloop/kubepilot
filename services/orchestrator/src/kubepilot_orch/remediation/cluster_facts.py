@@ -84,6 +84,55 @@ async def capture_pre_state(action: RemediationAction, mcp_k8s: MCPClient) -> di
     return None
 
 
+async def gather_signals(
+    state: Any,
+    mcp_k8s: MCPClient,
+    mcp_prom: MCPClient | None = None,
+    *,
+    error_rate_query: str | None = None,
+) -> dict[str, float]:
+    """A single signal snapshot for post-remediation validation.
+
+    ``restarts`` — total container restarts across the service's pods (concrete
+    and workload-agnostic, via read-only mcp-k8s). ``error_rate`` — optional,
+    from a configured PromQL instant query (skipped when no query/mcp-prom). The
+    execute node calls this once pre-write (baseline) and once post-write.
+    """
+    signals: dict[str, float] = {}
+    service = getattr(state, "service", None)
+    namespace = getattr(state, "namespace", None)
+    if service and namespace:
+        try:
+            pods = await mcp_k8s.invoke(
+                "list_pods", {"namespace": namespace, "label_selector": f"app={service}"}
+            )
+            signals["restarts"] = float(
+                sum(int(p.get("restart_count", 0)) for p in (pods or []) if isinstance(p, dict))
+            )
+        except Exception as e:  # a signal miss must not crash the execute node
+            log.warning("signal_restarts_failed", service=service, error=str(e))
+
+    if mcp_prom is not None and error_rate_query:
+        try:
+            res = await mcp_prom.invoke("query_metrics", {"promql": error_rate_query})
+            signals["error_rate"] = _first_sample_value(res)
+        except Exception as e:
+            log.warning("signal_error_rate_failed", error=str(e))
+    return signals
+
+
+def _first_sample_value(instant_result: Any) -> float:
+    """First sample value of a query_metrics InstantQueryResult dict, or 0.0."""
+    if not isinstance(instant_result, dict):
+        return 0.0
+    for series in instant_result.get("series", []) or []:
+        for sample in series.get("samples", []) or []:
+            value = sample.get("value")
+            if value is not None:
+                return float(value)
+    return 0.0
+
+
 async def _current_image(
     action: RemediationAction, mcp_k8s: MCPClient, container: str | None
 ) -> str | None:
