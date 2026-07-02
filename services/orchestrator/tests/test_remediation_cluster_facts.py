@@ -39,9 +39,7 @@ def _action(tool: str, **args: Any) -> RemediationAction:
 
 @pytest.mark.asyncio
 async def test_estimate_blast_radius_uses_live_replicas() -> None:
-    mcp = _FakeMCP(
-        {"get_deployments": [{"name": "checkout", "replicas": 6, "ready_replicas": 6}]}
-    )
+    mcp = _FakeMCP({"get_deployments": [{"name": "checkout", "replicas": 6, "ready_replicas": 6}]})
     br = await cluster_facts.estimate_blast_radius(_action("rollout_restart"), mcp)
     assert br.pods_affected == 6  # whole workload
     assert br.traffic_percent == 100.0
