@@ -59,11 +59,27 @@ gateway imports `kubepilot_orch` and runs the compiled graph itself (`api-gatewa
 the app tier; `services/orchestrator` is a library.
 
 **The graph is conditional** (`orchestrator/.../graph.py`). `AgentDeps` carries optional `mcp_tempo`,
-`mcp_ci`, and `memory`. `build_graph` adds the Tracing/Deployment specialist branches and the memory
-node **only when those deps are present**, so a minimal install is the Phase-1 three-specialist shape
-and a full install fans out to five specialists → memory → RCA → recommendation → finalize. Parallel
-branches merge via reducer-annotated `InvestigationState` fields (`operator.add` / `_merge_dicts`);
-serial nodes own singleton fields.
+`mcp_ci`, `memory`, `knowledge`, `calibrator`, and `enable_critic`. `build_graph` adds the
+Tracing/Deployment specialist branches and the pre-RCA collector nodes **only when those deps are
+present**, so a minimal install is the Phase-1 three-specialist shape and a full install fans out to
+five specialists → {memory, knowledge} (parallel pre-RCA collectors) → RCA → **critic** →
+recommendation → finalize. Parallel branches merge via reducer-annotated `InvestigationState` fields
+(`operator.add` / `_merge_dicts` — including Phase 3 `prompt_versions`); serial nodes own singleton
+fields.
+
+**Phase 3 additions (all read-only).** A **critic agent** reviews the RCA before recommendation
+(agreement/concerns/escalation → seeds `calibrated_confidence`; gated by `enable_critic`, on in the
+gateway). A **cluster knowledge graph** (`knowledge/`, relational + optional pgvector) injects
+owner/deps/SLO context via a pre-RCA node. **Runtime-specific RCA libraries** (`rca/runtimes/*.md`,
+selected by the Logs agent's `detail.runtime`) are injected into the RCA prompt — data, not branching
+code. A **confidence calibrator** (`calibration/`, isotonic/PAV, no sklearn) maps raw→empirical
+confidence at finalize. **Guardrails** (`guardrails/`): `sanitize` scrubs prompt-injection from tool
+results in `agents/_runner.py`; `policy` drops destructive recommendations. A **versioned prompt
+registry** (`agents/prompt_registry.py`) powers A/B + rollback (`prompt_active_versions` config).
+**RBAC v2** (`api-gateway/.../auth.py`): viewer/investigator/operator/admin + namespace scoping +
+audit export (`audit.py`). **mcp-datadog** is a reference observability adapter mapping Datadog →
+curated capability shapes. Eval harness gains calibration/drift/prompt-A/B/debate + a release gate
+(`eval/harness/{calibration,drift,eval_gate,prompt_ab,debate_eval}.py`, `.github/workflows/eval-gate.yml`).
 
 **MCP servers speak a REST contract, not stdio MCP.** Every server (`mcp-k8s/prom/loki/tempo/ci`)
 exposes `GET /mcp/tools`, `POST /mcp/invoke`, `GET /mcp/health` and returns **curated** response models
