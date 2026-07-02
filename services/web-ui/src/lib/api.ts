@@ -64,6 +64,25 @@ export interface MemoryContextItem {
   occurred_at: string | null;
 }
 
+// Phase 3: the critic agent's assessment of the RCA.
+export interface Critique {
+  agreement: number;
+  concerns: string[];
+  adjusted_confidence: number | null;
+  escalate_to_human: boolean;
+}
+
+// Phase 3: a fact from the cluster knowledge graph.
+export interface ServiceKnowledge {
+  service: string;
+  owner: string | null;
+  dependencies: string[];
+  dependents: string[];
+  slos: Record<string, unknown>;
+  last_deploy: string | null;
+  notes: string | null;
+}
+
 export interface InvestigationState {
   current_step?: string;
   completed_agents?: string[];
@@ -73,6 +92,11 @@ export interface InvestigationState {
   recommendations?: Recommendation[];
   timeline?: TimelineEntry[];
   memory_context?: MemoryContextItem[];
+  // Phase 3 additive fields.
+  critique?: Critique | null;
+  calibrated_confidence?: number | null;
+  knowledge_context?: ServiceKnowledge[];
+  prompt_versions?: Record<string, string>;
   [key: string]: unknown;
 }
 

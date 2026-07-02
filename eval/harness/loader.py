@@ -28,6 +28,12 @@ from pydantic import BaseModel, Field
 # Repo-relative default location of the golden dataset.
 DEFAULT_DATASET = Path(__file__).resolve().parent.parent / "datasets" / "golden_rca_scenarios.jsonl"
 
+# Held-out set — distinct scenarios scored separately from golden to detect
+# overfitting to the golden prompts (Phase 3 §7).
+HELDOUT_DATASET = (
+    Path(__file__).resolve().parent.parent / "datasets" / "heldout_rca_scenarios.jsonl"
+)
+
 # MCP server names the harness knows how to wire (must match graph.AgentDeps).
 MCP_SERVERS = ("mcp-k8s", "mcp-prom", "mcp-loki")
 
@@ -114,3 +120,8 @@ def load_scenarios(path: str | Path | None = None) -> list[Scenario]:
     if duplicates:
         raise ValueError(f"Duplicate scenario ids in {dataset}: {sorted(duplicates)}")
     return scenarios
+
+
+def load_heldout() -> list[Scenario]:
+    """Load the held-out RCA scenarios (distinct from golden; overfit detector)."""
+    return load_scenarios(HELDOUT_DATASET)

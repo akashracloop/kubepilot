@@ -143,6 +143,9 @@ export default function InvestigationDetailPage() {
   const recommendations = state.recommendations ?? [];
   const timeline = state.timeline ?? [];
   const memoryContext = state.memory_context ?? [];
+  const critique = state.critique ?? null;
+  const calibratedConfidence = state.calibrated_confidence ?? null;
+  const knowledgeContext = state.knowledge_context ?? [];
   const isCompleted = detail?.status === "completed";
   const isTerminal = detail ? TERMINAL.has(detail.status) : false;
 
@@ -230,6 +233,14 @@ export default function InvestigationDetailPage() {
         </Card>
       )}
 
+      {/* Escalate-to-human banner (Phase 3 critic) */}
+      {critique?.escalate_to_human && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          ⚠️ <span className="font-semibold">Escalated to human review.</span> The
+          critic&apos;s confidence in this finding is low — verify before acting.
+        </div>
+      )}
+
       {/* RCA report */}
       {rca && (
         <Card>
@@ -247,6 +258,14 @@ export default function InvestigationDetailPage() {
                   {Math.round((rca.confidence ?? 0) * 100)}%
                 </span>
               </span>
+              {calibratedConfidence != null && (
+                <span className="text-sm text-neutral-600">
+                  Calibrated:{" "}
+                  <span className="font-semibold text-neutral-900">
+                    {Math.round(calibratedConfidence * 100)}%
+                  </span>
+                </span>
+              )}
             </div>
             <div>
               <h4 className="text-sm font-semibold text-neutral-800">
@@ -262,6 +281,69 @@ export default function InvestigationDetailPage() {
                 {rca.reasoning}
               </p>
             </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Critic review (Phase 3) */}
+      {critique && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Critic Review</CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-600">
+              <span>
+                Agreement:{" "}
+                <span className="font-semibold text-neutral-900">
+                  {Math.round((critique.agreement ?? 0) * 100)}%
+                </span>
+              </span>
+              {critique.escalate_to_human && (
+                <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                  escalate to human
+                </span>
+              )}
+            </div>
+            {critique.concerns.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-neutral-800">
+                  Concerns
+                </h4>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-neutral-700">
+                  {critique.concerns.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Cluster knowledge (Phase 3) */}
+      {knowledgeContext.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cluster Knowledge ({knowledgeContext.length})</CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-2 text-sm">
+            {knowledgeContext.map((k, i) => (
+              <div key={i} className="rounded border border-neutral-200 px-3 py-2">
+                <div className="font-mono font-medium text-neutral-900">
+                  {k.service}
+                </div>
+                <div className="text-neutral-600">
+                  {k.owner && <span>owner: {k.owner} · </span>}
+                  {k.dependencies.length > 0 && (
+                    <span>depends on: {k.dependencies.join(", ")} · </span>
+                  )}
+                  {k.dependents.length > 0 && (
+                    <span>depended on by: {k.dependents.join(", ")}</span>
+                  )}
+                </div>
+              </div>
+            ))}
           </CardBody>
         </Card>
       )}

@@ -97,3 +97,44 @@ async def test_retriever_index_then_retrieve_with_service_boost() -> None:
     assert hits[0].service == "checkout-service"  # same-service boost wins
     assert hits[0].outcome == "reverted the query change"
     assert 0.0 <= hits[0].similarity <= 1.0
+
+
+# ---- Hybrid (dense + lexical) retrieval (Phase 2 refinement) ---------------
+
+from kubepilot_orch.memory.store import lexical_overlap  # noqa: E402
+
+
+def test_lexical_overlap_jaccard() -> None:
+    assert lexical_overlap("oom killed java heap", "why was it oom killed") == pytest.approx(2 / 7)
+    assert lexical_overlap("", "anything") == 0.0
+    assert lexical_overlap("disk pressure", "network partition") == 0.0
+
+
+@pytest.mark.asyncio
+async def test_hybrid_lexical_breaks_dense_ties() -> None:
+    """With equal dense scores, the lexically-matching incident ranks first."""
+    store = InMemoryMemoryStore()
+    emb = [1.0, 0.0, 0.0]  # identical embedding → identical dense cosine
+    await store.add(
+        StoredIncident(
+            incident_id=uuid.uuid4(),
+            summary="disk pressure on node",
+            embedding=emb,
+            namespace="prod",
+        )
+    )
+    await store.add(
+        StoredIncident(
+            incident_id=uuid.uuid4(),
+            summary="oom killed java heap",
+            embedding=emb,
+            namespace="prod",
+        )
+    )
+    hybrid = await store.search(emb, k=2, query_text="why was the container oom killed")
+    assert hybrid[0][0].summary == "oom killed java heap"
+    assert hybrid[0][1] > hybrid[1][1]  # lexical term broke the tie
+
+    # Without query_text the score is pure dense (a tie here) — both returned.
+    plain = await store.search(emb, k=2)
+    assert {r[0].summary for r in plain} == {"disk pressure on node", "oom killed java heap"}

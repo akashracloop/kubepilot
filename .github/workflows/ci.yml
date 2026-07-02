@@ -56,6 +56,39 @@ jobs:
       - name: Eval harness self-test
         run: uv run pytest eval -p no:cacheprovider
 
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: kubepilot
+          POSTGRES_PASSWORD: kubepilot
+          POSTGRES_DB: kubepilot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kubepilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.11.x"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install workspace
+        # psycopg[binary] bundles libpq so the pgvector/knowledge stores connect
+        # without a system libpq (the prod image ships it in the container).
+        run: uv sync --all-packages && uv pip install "psycopg[binary]"
+      - name: Integration tests (real Postgres + pgvector)
+        env:
+          KUBEPILOT_TEST_DB_URL: postgresql://kubepilot:kubepilot@localhost:5432/kubepilot
+        run: uv run pytest -m integration -p no:cacheprovider
+
   helm-lint:
     runs-on: ubuntu-latest
     steps:

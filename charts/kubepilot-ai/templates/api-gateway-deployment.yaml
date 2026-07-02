@@ -61,6 +61,25 @@ spec:
             - name: KUBEPILOT_API_MCP__CI
               value: "http://mcp-ci.{{ .Release.Namespace }}.svc.cluster.local:8080"
             {{- end }}
+            # ---- Phase 3 features (critic / knowledge / calibration / prompt pins) ----
+            - name: KUBEPILOT_API_CRITIC_ENABLED
+              value: {{ .Values.apiGateway.phase3.criticEnabled | quote }}
+            - name: KUBEPILOT_API_KNOWLEDGE_ENABLED
+              value: {{ .Values.apiGateway.phase3.knowledgeEnabled | quote }}
+            - name: KUBEPILOT_API_TIMELINE_LLM_LABELS
+              value: {{ .Values.apiGateway.phase3.timelineLlmLabels | quote }}
+            {{- if .Values.apiGateway.phase3.knowledgeSnapshotPath }}
+            - name: KUBEPILOT_API_KNOWLEDGE_SNAPSHOT_PATH
+              value: {{ .Values.apiGateway.phase3.knowledgeSnapshotPath | quote }}
+            {{- end }}
+            {{- if .Values.apiGateway.phase3.calibratorPath }}
+            - name: KUBEPILOT_API_CALIBRATOR_PATH
+              value: {{ .Values.apiGateway.phase3.calibratorPath | quote }}
+            {{- end }}
+            {{- if .Values.apiGateway.phase3.promptActiveVersions }}
+            - name: KUBEPILOT_API_PROMPT_ACTIVE_VERSIONS
+              value: {{ .Values.apiGateway.phase3.promptActiveVersions | toJson | quote }}
+            {{- end }}
             # ---- Orchestrator settings (in-process, KUBEPILOT_*) ----
             {{- if or .Values.postgres.enabled .Values.postgres.externalUrl }}
             - name: KUBEPILOT_DB__URL

@@ -1,0 +1,59 @@
+{{- if and .Values.apiGateway.phase3.knowledgeEnabled .Values.apiGateway.phase3.knowledgeIngest.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-knowledge-ingest
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: knowledge-ingest
+spec:
+  schedule: {{ .Values.apiGateway.phase3.knowledgeIngest.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "kubepilot.labels" . | nindent 12 }}
+            app.kubernetes.io/component: knowledge-ingest
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10002
+            runAsGroup: 10002
+            fsGroup: 10002
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: knowledge-ingest
+              # Reuse the api-gateway image — it bundles kubepilot_orch (the ingest CLI).
+              image: "{{ .Values.global.imageRegistry }}/{{ .Values.apiGateway.image.repository }}:{{ .Values.apiGateway.image.tag }}"
+              imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              command:
+                - python
+                - -m
+                - kubepilot_orch.knowledge.ingest_cli
+                - /etc/kubepilot/knowledge/snapshot.json
+              env:
+                {{- if or .Values.postgres.enabled .Values.postgres.externalUrl }}
+                - name: KUBEPILOT_DB_URL
+                  value: {{ include "kubepilot.postgres.url" . | quote }}
+                {{- end }}
+              volumeMounts:
+                - name: snapshot
+                  mountPath: /etc/kubepilot/knowledge
+                  readOnly: true
+          volumes:
+            - name: snapshot
+              configMap:
+                name: {{ required "apiGateway.phase3.knowledgeIngest.snapshotConfigMap is required when knowledgeIngest.enabled" .Values.apiGateway.phase3.knowledgeIngest.snapshotConfigMap }}
+{{- end }}

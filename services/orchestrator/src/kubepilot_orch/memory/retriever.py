@@ -1,11 +1,12 @@
 """Hybrid retrieval over incident memory.
 
 ``index`` embeds a concluded incident and stores it. ``retrieve`` embeds the
-current incident's summary, pulls nearest neighbours from the store, and
-re-ranks with lightweight metadata boosts (same service / same namespace / same
-root-cause category) before returning ``PastIncident`` objects for the RCA
-prompt. The metadata boost is the "hybrid" signal on top of dense similarity;
-a full BM25 term index over metadata is a later refinement.
+current incident's summary, pulls nearest neighbours from the store using
+**hybrid ranking** — dense embedding cosine blended with a lexical term (a
+Postgres ``ts_rank_cd`` full-text rank in prod, a Jaccard token overlap in the
+in-memory store) — then re-ranks with lightweight metadata boosts (same service /
+namespace / root-cause category) before returning ``PastIncident`` objects for
+the RCA prompt.
 """
 
 from __future__ import annotations
@@ -73,8 +74,11 @@ class MemoryRetriever:
         min_similarity: float = 0.0,
     ) -> list[PastIncident]:
         (query_vec,) = await self._embedder.embed([query_summary])
-        # Over-fetch, then re-rank with metadata boosts.
-        candidates = await self._store.search(query_vec, namespace=namespace, k=max(k * 3, k))
+        # Over-fetch with hybrid (dense + lexical) ranking, then re-rank with
+        # metadata boosts. Passing query_text enables the lexical/tsvector term.
+        candidates = await self._store.search(
+            query_vec, namespace=namespace, k=max(k * 3, k), query_text=query_summary
+        )
 
         ranked: list[tuple[StoredIncident, float, float]] = []
         for incident, sim in candidates:

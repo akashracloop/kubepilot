@@ -1,20 +1,29 @@
-"""Incident timeline assembly (Phase 2).
+"""Incident timeline assembly (Phase 2, + optional LLM labeling).
 
 Builds an ordered chronology from the evidence the specialists collected plus
 deploy events, so the UI/API can show "deploy → first anomaly → root cause".
 
-Deterministic by design: ordering comes from evidence timestamps (never an LLM),
-and labels come from a stable kind→label mapping. This is more reliable and
-testable than asking a model to order events; an LLM labeling refinement is a
-possible later enhancement, not a dependency.
+Deterministic by design: **ordering** comes from evidence timestamps (never an
+LLM), and labels come from a stable kind→label mapping. An *optional* LLM pass
+(:func:`refine_labels`) can polish the labels into more human-friendly phrases
+without touching the ordering; it fails open to the deterministic labels, so it
+is a refinement, never a dependency.
 """
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+import structlog
 
 from kubepilot_orch.state import Evidence, InvestigationState, Severity, TimelineEntry
+
+if TYPE_CHECKING:
+    from kubepilot_orch.llm.router import LLMRouter
+
+log = structlog.get_logger(__name__)
 
 # Evidence kind → short timeline label.
 _KIND_LABEL = {
@@ -94,3 +103,54 @@ def build_timeline(
 
     entries.sort(key=lambda e: e.at)
     return entries
+
+
+_REFINE_SYSTEM = (
+    "You relabel incident-timeline events. You are given an ordered list of events "
+    "(index, current_label, description). Return ONLY a JSON array of strings — one "
+    "short snake_case label (<= 3 words) per event, in the SAME order and length. "
+    "Do not reorder, add, or drop events. Keep a good current_label if it's already apt."
+)
+
+
+async def refine_labels(entries: list[TimelineEntry], *, llm: LLMRouter) -> list[TimelineEntry]:
+    """Optionally polish timeline labels with an LLM (ordering untouched).
+
+    Fails open: any invalid/mismatched model output leaves the deterministic labels
+    in place. Only the ``label`` field changes; timestamps/order/severity are kept.
+    """
+    from kubepilot_orch.llm.base import Message, Role
+    from kubepilot_orch.llm.parsing import strip_code_fences
+
+    if not entries:
+        return entries
+
+    listing = "\n".join(
+        f"{i}. current_label={e.label!r} description={e.description!r}"
+        for i, e in enumerate(entries)
+    )
+    try:
+        resp = await llm.chat(
+            role=Role.SUMMARIZATION,
+            messages=[
+                Message(role="system", content=_REFINE_SYSTEM),
+                Message(role="user", content=listing),
+            ],
+            temperature=0.0,
+        )
+        labels = json.loads(strip_code_fences(resp.content))
+    except (ValueError, TypeError) as e:
+        log.warning("timeline_refine_failed", error=str(e))
+        return entries
+
+    if not isinstance(labels, list) or len(labels) != len(entries):
+        log.warning(
+            "timeline_refine_shape_mismatch", got=len(labels) if isinstance(labels, list) else None
+        )
+        return entries
+
+    refined: list[TimelineEntry] = []
+    for entry, label in zip(entries, labels, strict=True):
+        new_label = str(label).strip() if label else entry.label
+        refined.append(entry.model_copy(update={"label": new_label or entry.label}))
+    return refined

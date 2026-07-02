@@ -125,3 +125,27 @@ async def test_upsert_overwrites_same_key() -> None:
     assert rec is not None
     assert rec.owner == "new"
     assert len(store) == 1
+
+
+@pytest.mark.asyncio
+async def test_retriever_ingest_populates_and_queries() -> None:
+    """The retriever.ingest convenience is the startup/CronJob population path."""
+    retriever = KnowledgeRetriever(InMemoryKnowledgeStore())
+    n = await retriever.ingest(_SNAPSHOT, owner_map={"inventory-service": "supply-team"})
+    assert n == 4
+    facts = await retriever.retrieve(service="checkout-service", namespace="prod")
+    assert {f.service for f in facts} == {"checkout-service", "payments-db", "inventory-service"}
+
+
+def test_ingest_cli_dry_run_reports_count(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    """`python -m ...ingest_cli` with no DB does an in-memory dry run and reports."""
+    import json
+
+    from kubepilot_orch.knowledge import ingest_cli
+
+    snap = tmp_path / "snapshot.json"
+    snap.write_text(json.dumps(_SNAPSHOT), encoding="utf-8")
+
+    rc = ingest_cli.main([str(snap)])  # no --db-url → in-memory dry run
+    assert rc == 0
+    assert "ingested 4 services" in capsys.readouterr().out

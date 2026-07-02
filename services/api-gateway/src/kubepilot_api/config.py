@@ -82,6 +82,10 @@ class ApiSettings(BaseSettings):
     # SLO context. Off by default until the graph is populated by ingestion; an empty
     # graph would just add a no-op node.
     knowledge_enabled: bool = False
+    # Optional path to a cluster-snapshot JSON ingested into the knowledge graph at
+    # startup (dev / small installs). Larger installs run the ingest CronJob instead
+    # (python -m kubepilot_orch.knowledge.ingest_cli). Requires knowledge_enabled.
+    knowledge_snapshot_path: str | None = None
 
     # Phase 3 confidence calibrator: path to a JSON file holding a trained isotonic
     # calibrator (IsotonicCalibrator.to_dict()). When set + readable, finalize maps
@@ -92,6 +96,11 @@ class ApiSettings(BaseSettings):
     # {"rca_agent": "v2"}. This is the rollback lever — set it (env/values) and
     # restart to roll a prompt back in <5 min. Empty → each prompt serves its latest.
     prompt_active_versions: dict[str, str] = Field(default_factory=dict)
+
+    # Optional LLM pass to polish incident-timeline labels at finalize (ordering
+    # stays deterministic). Off by default — the static labels are the reliable
+    # baseline; enabling adds one cheap summarization call per investigation.
+    timeline_llm_labels: bool = False
 
 
 def load_settings() -> ApiSettings:

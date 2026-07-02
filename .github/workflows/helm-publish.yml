@@ -1,0 +1,42 @@
+name: Helm Publish
+
+# Package the umbrella chart and push it to the GitHub Container Registry as an
+# OCI artifact on every release tag. Consumers then:
+#   helm install kubepilot-ai oci://ghcr.io/<owner>/charts/kubepilot-ai --version <x.y.z>
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.17.3"
+
+      - name: Lint chart
+        run: helm lint charts/kubepilot-ai
+
+      - name: Registry login (GHCR)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Package + push chart
+        run: |
+          # Derive the chart version from the tag (strip a leading 'v').
+          VERSION="${GITHUB_REF_NAME#v}"
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          helm package charts/kubepilot-ai --version "$VERSION" --app-version "$VERSION"
+          helm push "kubepilot-ai-${VERSION}.tgz" "oci://ghcr.io/${OWNER}/charts"
+          echo "Published kubepilot-ai $VERSION to oci://ghcr.io/${OWNER}/charts"

@@ -26,7 +26,16 @@ jobs:
       - name: Install workspace
         run: uv sync --all-packages
 
-      - name: Run golden RCA eval
+      # Deterministic evals (no key) — memory-A/B + timeline uplift reports.
+      - name: Memory A/B (scripted)
+        run: uv run python -m eval.harness.memory_ab
+
+      - name: Timeline eval (scripted)
+        run: uv run python -m eval.harness.timeline_eval
+
+      # Live golden + held-out accuracy (needs a key). run_eval scores golden
+      # (the gate) and the held-out set separately, reporting the overfit gap.
+      - name: Run golden + held-out RCA eval (live)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |

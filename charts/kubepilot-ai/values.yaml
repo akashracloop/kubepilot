@@ -49,6 +49,23 @@ apiGateway:
     # Set `apiKey` to have the chart render the Secret; else create it out of band.
     secretName: kubepilot-api-auth
     apiKey: ""
+  # Phase 3 features (see docs/features/). The critic is on by default; knowledge
+  # graph + calibration are opt-in (empty until a snapshot / trained calibrator is
+  # provided). promptActiveVersions pins a prompt to a version (the rollback lever).
+  phase3:
+    criticEnabled: true
+    knowledgeEnabled: false
+    knowledgeSnapshotPath: "" # e.g. /etc/kubepilot/knowledge/snapshot.json (mounted)
+    calibratorPath: "" # e.g. /etc/kubepilot/calibrator.json (mounted)
+    promptActiveVersions: {} # e.g. {"rca_agent": "v1"} to roll a prompt back
+    timelineLlmLabels: false # opt-in LLM polish of timeline labels (adds a call)
+    # Periodic knowledge-graph ingestion (the CronJob trigger). Point
+    # snapshotConfigMap at a ConfigMap holding key `snapshot.json` (your exported
+    # service catalog / label scan); it's ingested into Postgres on the schedule.
+    knowledgeIngest:
+      enabled: false
+      schedule: "*/30 * * * *"
+      snapshotConfigMap: ""
   # Extra env vars appended LAST (so they override templated ones). Use to repoint
   # MCP endpoints at a replacement server, e.g. a Grafana MCP. See docs/mcp-adapters.md.
   extraEnv: {}
@@ -125,6 +142,15 @@ mcp:
     backend: github_actions # github_actions | jenkins | argocd
     url: "" # backend API base URL
     tokenSecretRef: "" # Secret (key: token) with a read-only CI token
+  # Phase 3 — Datadog observability adapter (reference). Off by default. When
+  # enabled, point the metrics/logs capabilities at it (see values-datadog.yaml):
+  # a config-only swap that maps Datadog → KubePilot's curated shapes.
+  datadog:
+    enabled: false
+    image: { repository: kubepilot-mcp-datadog, tag: 0.1.0-dev }
+    site: datadoghq.com # DD_SITE, e.g. datadoghq.eu / us5.datadoghq.com
+    # Secret holding read-only Datadog credentials (keys: api-key, app-key).
+    credentialsSecretRef: ""
 
 # -----------------------------------------------------------------------------
 # Persistence — bundled single-node Postgres/Redis for dev & prod-small. For

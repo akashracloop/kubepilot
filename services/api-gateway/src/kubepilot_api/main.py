@@ -37,7 +37,9 @@ from kubepilot_api.routes.investigations import make_router as make_investigatio
 log = structlog.get_logger(__name__)
 
 
-def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = None) -> Any:
+def _default_compiled_graph(
+    settings: ApiSettings, checkpointer: Any | None = None, knowledge: Any | None = None
+) -> Any:
     """Build the production graph wired to real MCP clients + the configured LLM router.
 
     Imported lazily so tests can build the app without the langchain dependencies
@@ -78,9 +80,10 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
         mcp_tempo=mcp.client(Capability.TRACING) if mcp.has(Capability.TRACING) else None,
         mcp_ci=mcp.client(Capability.DEPLOYMENT) if mcp.has(Capability.DEPLOYMENT) else None,
         memory=_build_memory(settings, orch_settings) if settings.memory_enabled else None,
-        knowledge=_build_knowledge(settings) if settings.knowledge_enabled else None,
+        knowledge=knowledge or (_build_knowledge(settings) if settings.knowledge_enabled else None),
         calibrator=_build_calibrator(settings),
         enable_critic=settings.critic_enabled,
+        timeline_llm_labels=settings.timeline_llm_labels,
     )
     return build_graph(deps, checkpointer=checkpointer)
 
@@ -129,6 +132,39 @@ def _build_knowledge(settings: ApiSettings) -> Any:
         else InMemoryKnowledgeStore()
     )
     return KnowledgeRetriever(store)
+
+
+def _read_snapshot(path_str: str) -> dict[str, Any] | None:
+    """Sync file read (kept out of the async startup path). None if missing/invalid."""
+    import json
+    from pathlib import Path
+
+    path = Path(path_str)
+    if not path.exists():
+        log.warning("knowledge_snapshot_missing", path=path_str)
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        log.error("knowledge_snapshot_unreadable", path=path_str, error=str(e))
+        return None
+
+
+async def _build_and_ingest_knowledge(settings: ApiSettings) -> Any:
+    """Build the knowledge retriever and, if a snapshot is configured, ingest it.
+
+    Returns None when knowledge is disabled. Ingestion failures are logged, not
+    fatal — the RCA degrades to empty knowledge_context rather than failing startup.
+    """
+    if not settings.knowledge_enabled:
+        return None
+    retriever = _build_knowledge(settings)
+    if settings.knowledge_snapshot_path:
+        snapshot = _read_snapshot(settings.knowledge_snapshot_path)
+        if snapshot is not None:
+            count = await retriever.ingest(snapshot)
+            log.info("knowledge_snapshot_ingested", services=count)
+    return retriever
 
 
 def _build_calibrator(settings: ApiSettings) -> Any:
@@ -191,8 +227,11 @@ def build_app(
 
         # If the graph wasn't injected, build it here under an open checkpointer.
         if orchestrator is None:
+            knowledge = await _build_and_ingest_knowledge(settings)
             async with open_checkpointer(settings.checkpointer, settings.db.url) as checkpointer:
-                graph = _default_compiled_graph(settings, checkpointer=checkpointer)
+                graph = _default_compiled_graph(
+                    settings, checkpointer=checkpointer, knowledge=knowledge
+                )
                 orch = InvestigationOrchestrator(compiled_graph=graph, repo=repo, bus=bus)
                 app.state.orchestrator = orch
                 try:
