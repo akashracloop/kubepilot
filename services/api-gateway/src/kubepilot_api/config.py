@@ -82,6 +82,10 @@ class ApiSettings(BaseSettings):
     # SLO context. Off by default until the graph is populated by ingestion; an empty
     # graph would just add a no-op node.
     knowledge_enabled: bool = False
+    # Optional path to a cluster-snapshot JSON ingested into the knowledge graph at
+    # startup (dev / small installs). Larger installs run the ingest CronJob instead
+    # (python -m kubepilot_orch.knowledge.ingest_cli). Requires knowledge_enabled.
+    knowledge_snapshot_path: str | None = None
 
     # Phase 3 confidence calibrator: path to a JSON file holding a trained isotonic
     # calibrator (IsotonicCalibrator.to_dict()). When set + readable, finalize maps

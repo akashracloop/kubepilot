@@ -8,9 +8,12 @@ knowledge never overrides live signals (same discipline as long-term memory).
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 
 from kubepilot_orch.knowledge.graph import KnowledgeStore
+from kubepilot_orch.knowledge.ingest import ingest_snapshot
 from kubepilot_orch.state import ServiceKnowledge
 
 log = structlog.get_logger(__name__)
@@ -20,6 +23,16 @@ class KnowledgeRetriever:
     def __init__(self, store: KnowledgeStore, *, max_dependencies: int = 5) -> None:
         self._store = store
         self._max_dependencies = max_dependencies
+
+    @property
+    def store(self) -> KnowledgeStore:
+        return self._store
+
+    async def ingest(
+        self, snapshot: dict[str, Any], *, owner_map: dict[str, str] | None = None
+    ) -> int:
+        """Populate the backing store from a cluster snapshot. Returns services upserted."""
+        return await ingest_snapshot(self._store, snapshot, owner_map=owner_map)
 
     async def get(self, service: str, *, namespace: str | None = None) -> ServiceKnowledge | None:
         record = await self._store.get(service, namespace=namespace)
