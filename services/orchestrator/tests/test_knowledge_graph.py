@@ -189,3 +189,97 @@ def test_to_state_update_shape() -> None:
     assert update["knowledge_context"] == []
     assert update["current_step"] == "knowledge_retrieved"
     assert update["completed_agents"] == ["knowledge"]
+
+
+@pytest.mark.asyncio
+async def test_memory_and_knowledge_both_enabled_run_serially() -> None:
+    """Regression: memory + knowledge both on must not concurrently write the
+    singleton current_step (LangGraph InvalidUpdateError). They run serially."""
+    from kubepilot_orch.memory import HashEmbedder, InMemoryMemoryStore, MemoryRetriever
+
+    store = InMemoryKnowledgeStore()
+    await ingest_snapshot(store, _SNAPSHOT)
+    knowledge = KnowledgeRetriever(store)
+
+    mem = MemoryRetriever(HashEmbedder(dim=256), InMemoryMemoryStore())
+    await mem.index(
+        incident_id=uuid.uuid4(),
+        summary="checkout-service slow after deploy",
+        root_cause_category="DependencyFailure",
+        namespace="prod",
+        service="checkout-service",
+    )
+
+    rca = ScriptedLLM(
+        name="rca",
+        responses=[
+            llm_text(
+                RCAReport(
+                    root_cause="payments-db dependency",
+                    root_cause_category="DependencyFailure",
+                    confidence=0.8,
+                    evidence_refs=[0],
+                    reasoning="dep",
+                    recommendations=["check payments-db"],
+                ).model_dump_json()
+            )
+        ],
+    )
+    rec = ScriptedLLM(
+        name="rec",
+        responses=[
+            llm_text(
+                json.dumps(
+                    {"recommendations": [Recommendation(title="Check dep", rationale="x").model_dump()]}
+                )
+            )
+        ],
+    )
+    by_keyword = [
+        ("Kubernetes specialist", _spec("kubernetes", "list_pods")),
+        ("metrics specialist", _spec("metrics", "query_range")),
+        ("logs specialist", _spec("logs", "search_exceptions")),
+        ("Root-Cause Analysis", rca),
+        ("Recommendation agent", rec),
+    ]
+
+    class Dispatcher:
+        name = "dispatcher"
+
+        async def chat(self, messages: list[Any], **kwargs: Any) -> Any:
+            sys = next((m.content for m in messages if m.role == "system"), "")
+            for kw, llm in by_keyword:
+                if kw in sys:
+                    return await llm.chat(messages, **kwargs)
+            raise AssertionError(f"no scripted llm for {sys[:60]!r}")
+
+    deps = AgentDeps(
+        llm=build_router(Dispatcher()),  # type: ignore[arg-type]
+        mcp_k8s=build_mcp_client(_tool_handler("list_pods"), server_name="k8s"),
+        mcp_prom=build_mcp_client(_tool_handler("query_range"), server_name="prom"),
+        mcp_loki=build_mcp_client(_tool_handler("search_exceptions"), server_name="loki"),
+        memory=mem,
+        knowledge=knowledge,
+    )
+    try:
+        graph = build_graph(deps)
+        nodes = set(graph.get_graph().nodes)
+        assert {"memory", "knowledge"}.issubset(nodes)
+        final = await graph.ainvoke(
+            {
+                "incident_id": uuid.uuid4(),
+                "query": "why is checkout-service slow?",
+                "namespace": "prod",
+                "service": "checkout-service",
+                "started_at": _now(),
+            }
+        )
+    finally:
+        for c in (deps.mcp_k8s, deps.mcp_prom, deps.mcp_loki):
+            await c.aclose()
+
+    # Completed without a concurrent-update error; both collectors contributed.
+    assert final["current_step"] == "completed"
+    assert "memory" in final["completed_agents"]
+    assert "knowledge" in final["completed_agents"]
+    assert len(final["knowledge_context"]) >= 1
