@@ -1,0 +1,49 @@
+# prod-air-gapped profile — disconnected cluster, local LLMs only.
+# No cloud LLM keys; routing/analysis/summarization served by Ollama + vLLM.
+# Adds ~12 GB RAM (model-dependent) + optional GPU for the vLLM analysis model.
+#
+#   helm install kubepilot-ai ./charts/kubepilot-ai -f charts/kubepilot-ai/values-prod-air-gapped.yaml \
+#     --set-string apiGateway.auth.apiKey=$(openssl rand -hex 24)
+#
+# Assumes Ollama and vLLM are already running in-cluster (deployed separately or
+# by your platform team) and reachable at the URLs below. No cloud egress needed.
+
+global:
+  # Point at your internal registry mirror for a fully disconnected install.
+  imageRegistry: registry.internal/kubepilot
+
+apiGateway:
+  storage: postgres
+  checkpointer: postgres
+  auth:
+    apiKey: ""
+
+postgres:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+redis:
+  enabled: true
+
+agentOps:
+  phoenix:
+    enabled: true # self-hosted, OTel-GenAI — works fully offline
+  langsmith:
+    enabled: false # cloud — must stay off in air-gapped
+
+webUi:
+  enabled: true
+
+# No cloud credentials. Local models only.
+llm:
+  defaultProvider: ollama
+  credentials: {}
+  roles:
+    routing: { provider: ollama, model: llama3.1:8b }
+    analysis: { provider: vllm, model: qwen2.5:14b }
+    summarization: { provider: ollama, model: llama3.1:8b }
+  ollama:
+    baseUrl: http://ollama.kubepilot-system.svc.cluster.local:11434
+  vllm:
+    baseUrl: http://vllm.kubepilot-system.svc.cluster.local:8000/v1

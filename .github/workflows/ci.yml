@@ -51,6 +51,11 @@ jobs:
       - name: Unit tests
         run: uv run pytest -m "not integration and not live_llm" --cov=services --cov-report=term
 
+      # Deterministic eval-harness self-test (scorer math + runner plumbing).
+      # The full golden-scenario run against a real LLM is the nightly eval.yml job.
+      - name: Eval harness self-test
+        run: uv run pytest eval -p no:cacheprovider
+
   helm-lint:
     runs-on: ubuntu-latest
     steps:

@@ -42,6 +42,10 @@ class ApiSettings(BaseSettings):
     # Storage backend — "postgres" in prod, "memory" in tests / dev without DB.
     storage: str = "postgres"
 
+    # LangGraph checkpointer backend — "postgres" (resumable, survives restarts)
+    # or "memory" (dev / no-DB). See kubepilot_orch.checkpointing.
+    checkpointer: str = "postgres"
+
 
 def load_settings() -> ApiSettings:
     return ApiSettings()

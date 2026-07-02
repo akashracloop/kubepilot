@@ -5,7 +5,7 @@
 
 KubePilot AI investigates Kubernetes incidents autonomously by correlating signals across the cluster API, Prometheus, Loki, Tempo, and your CI/CD pipelines. It runs **any containerized workload** — Java, Python, Node.js, Go, .NET, databases, queues — and produces a root-cause analysis with evidence and confidence scoring, with **zero write access** to your cluster.
 
-**Status:** Phase 1 (MVP) in active development — see [docs/PHASE_1_PLAN.md](docs/PHASE_1_PLAN.md).
+**Status:** Phase 1 (MVP) — **feature-complete, pre-release.** All six agents, the three MCP servers, all six LLM providers, the Postgres-checkpointed LangGraph, the Web UI, the deployable Helm chart (dev / prod-small / prod-air-gapped), AgentOps token accounting, and a 20-scenario eval harness are implemented and tested. Remaining before `v0.1.0`: a tagged release, demo video, and external-tester validation. See [docs/PHASE_1_PLAN.md](docs/PHASE_1_PLAN.md).
 
 ## Why KubePilot
 

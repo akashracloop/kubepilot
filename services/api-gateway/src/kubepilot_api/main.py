@@ -12,6 +12,7 @@ and a scripted graph; production uses ``app`` from this module.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -35,7 +36,7 @@ from kubepilot_api.routes.investigations import make_router as make_investigatio
 log = structlog.get_logger(__name__)
 
 
-def _default_compiled_graph(settings: ApiSettings) -> Any:
+def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = None) -> Any:
     """Build the production graph wired to real MCP clients + the configured LLM router.
 
     Imported lazily so tests can build the app without the langchain dependencies
@@ -53,7 +54,7 @@ def _default_compiled_graph(settings: ApiSettings) -> Any:
         mcp_prom=MCPClient("mcp-prom", settings.mcp.prom),
         mcp_loki=MCPClient("mcp-loki", settings.mcp.loki),
     )
-    return build_graph(deps)
+    return build_graph(deps, checkpointer=checkpointer)
 
 
 def _default_repository(settings: ApiSettings) -> InvestigationRepository:
@@ -70,26 +71,53 @@ def build_app(
 ) -> FastAPI:
     """Build a FastAPI app with all dependencies wired.
 
-    Tests pass ``repo`` and ``compiled_graph`` to inject in-memory storage and
-    a scripted graph. Production code calls ``build_app()`` with no args.
+    Tests pass ``repo`` and ``compiled_graph`` to inject in-memory storage and a
+    scripted graph — the orchestrator is bound eagerly at build time.
+
+    Production calls ``build_app()`` with no args: the compiled graph is built
+    inside the lifespan so the LangGraph checkpointer (whose Postgres connection
+    pool must live exactly as long as the app) is opened at startup and torn down
+    at shutdown.
     """
     settings = settings or load_settings()
     repo = repo or _default_repository(settings)
-    compiled_graph = (
-        compiled_graph if compiled_graph is not None else _default_compiled_graph(settings)
-    )
     bus = InvestigationBus()
-    orchestrator = InvestigationOrchestrator(compiled_graph=compiled_graph, repo=repo, bus=bus)
+
+    # Eagerly-injected graph (tests) → bind the orchestrator now. Otherwise defer
+    # to the lifespan so the checkpointer lifecycle brackets the app's lifetime.
+    orchestrator: InvestigationOrchestrator | None = None
+    if compiled_graph is not None:
+        orchestrator = InvestigationOrchestrator(compiled_graph=compiled_graph, repo=repo, bus=bus)
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info("api_starting", version=__version__, environment=settings.environment)
-        try:
-            yield
-        finally:
-            log.info("api_stopping")
-            await orchestrator.shutdown()
-            await repo.aclose()
+
+        # AgentOps: enable OTel tracing when a Phoenix/OTLP endpoint is configured.
+        from kubepilot_orch.checkpointing import open_checkpointer
+        from kubepilot_orch.observability import setup_tracing
+
+        setup_tracing("kubepilot-api", os.environ.get("KUBEPILOT_OTEL_EXPORTER_ENDPOINT"))
+
+        # If the graph wasn't injected, build it here under an open checkpointer.
+        if orchestrator is None:
+            async with open_checkpointer(settings.checkpointer, settings.db.url) as checkpointer:
+                graph = _default_compiled_graph(settings, checkpointer=checkpointer)
+                orch = InvestigationOrchestrator(compiled_graph=graph, repo=repo, bus=bus)
+                app.state.orchestrator = orch
+                try:
+                    yield
+                finally:
+                    log.info("api_stopping")
+                    await orch.shutdown()
+                    await repo.aclose()
+        else:
+            try:
+                yield
+            finally:
+                log.info("api_stopping")
+                await orchestrator.shutdown()
+                await repo.aclose()
 
     app = FastAPI(
         title="KubePilot AI",
@@ -99,8 +127,9 @@ def build_app(
     )
     app.state.repo = repo
     app.state.bus = bus
-    app.state.orchestrator = orchestrator
     app.state.settings = settings
+    if orchestrator is not None:
+        app.state.orchestrator = orchestrator
 
     app.include_router(health_router)
     app.include_router(make_investigations_router(auth_dep=make_api_key_dep(settings)))

@@ -1,0 +1,350 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import {
+  getInvestigation,
+  streamInvestigation,
+  type InvestigationDetail,
+  type StreamEvent,
+} from "@/lib/api";
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  CardTitle,
+  Code,
+} from "@/components/ui";
+import { SeverityBadge, StatusBadge } from "@/components/StatusBadge";
+
+interface ProgressLine {
+  key: string;
+  label: string;
+  detail?: string;
+}
+
+const TERMINAL = new Set(["completed", "failed"]);
+
+function fmt(ts?: string): string {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
+}
+
+export default function InvestigationDetailPage() {
+  const params = useParams<{ id: string }>();
+  const id = params.id;
+
+  const [detail, setDetail] = useState<InvestigationDetail | null>(null);
+  const [progress, setProgress] = useState<ProgressLine[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const seq = useRef(0);
+
+  function pushProgress(label: string, detailText?: string) {
+    seq.current += 1;
+    setProgress((prev) => [
+      ...prev,
+      { key: `${Date.now()}-${seq.current}`, label, detail: detailText },
+    ]);
+  }
+
+  useEffect(() => {
+    if (!id) return;
+    const controller = new AbortController();
+    let cancelled = false;
+
+    async function finalize() {
+      try {
+        const full = await getInvestigation(id);
+        if (!cancelled) setDetail(full);
+      } catch (err) {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    function onEvent(evt: StreamEvent) {
+      if (cancelled) return;
+      const data = (evt.data ?? {}) as Record<string, unknown>;
+      switch (evt.event) {
+        case "ping":
+          return;
+        case "investigation_started":
+          pushProgress("Investigation started");
+          return;
+        case "node_started": {
+          const node = (data.node as string) || "node";
+          pushProgress(`${node} started`);
+          return;
+        }
+        case "node_completed": {
+          const node = (data.node as string) || "node";
+          pushProgress(`${node} completed`);
+          return;
+        }
+        case "investigation_completed":
+          pushProgress("Investigation completed");
+          // The terminal frame carries the full detail; still GET for canonical state.
+          finalize();
+          return;
+        case "investigation_failed":
+          pushProgress("Investigation failed");
+          finalize();
+          return;
+        default:
+          return;
+      }
+    }
+
+    async function run() {
+      // Load current snapshot first so late-joiners see prior state.
+      try {
+        const snap = await getInvestigation(id);
+        if (cancelled) return;
+        setDetail(snap);
+        if (TERMINAL.has(snap.status)) {
+          return; // already done — no need to stream
+        }
+      } catch (err) {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err));
+      }
+
+      try {
+        await streamInvestigation(id, onEvent, controller.signal);
+      } catch (err) {
+        if (!cancelled && !controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      }
+      // Stream closed — make sure we have the final record.
+      if (!cancelled) await finalize();
+    }
+
+    run();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  const state = detail?.state ?? {};
+  const rca = state.rca ?? null;
+  const evidence = state.evidence ?? [];
+  const recommendations = state.recommendations ?? [];
+  const isTerminal = detail ? TERMINAL.has(detail.status) : false;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-mono text-lg font-semibold">
+            {id?.slice(0, 8)}
+          </h1>
+          {detail && (
+            <p className="text-sm text-neutral-500">{detail.query}</p>
+          )}
+        </div>
+        {detail && <StatusBadge status={detail.status} />}
+      </div>
+
+      <Link
+        href="/investigations"
+        className="text-sm text-blue-700 hover:underline"
+      >
+        ← Back to all investigations
+      </Link>
+
+      {error && (
+        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+
+      {detail && (
+        <Card>
+          <CardBody className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+            <Meta label="Namespace" value={detail.namespace} />
+            <Meta label="Service" value={detail.service || "—"} />
+            <Meta label="Created" value={fmt(detail.created_at)} />
+            <Meta label="Updated" value={fmt(detail.updated_at)} />
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Live progress */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            Agent Progress
+            {!isTerminal && detail && (
+              <span className="ml-2 text-xs font-normal text-blue-600">
+                (live)
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardBody>
+          {progress.length === 0 ? (
+            <p className="text-sm text-neutral-500">
+              {isTerminal
+                ? "No streamed progress (investigation already finished)."
+                : "Waiting for events…"}
+            </p>
+          ) : (
+            <ol className="space-y-1 text-sm">
+              {progress.map((p) => (
+                <li key={p.key} className="flex gap-2">
+                  <span className="text-neutral-400">•</span>
+                  <span>{p.label}</span>
+                  {p.detail && (
+                    <span className="text-neutral-500">— {p.detail}</span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardBody>
+      </Card>
+
+      {detail?.error && (
+        <Card className="border-red-200">
+          <CardHeader>
+            <CardTitle>Error</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <p className="text-sm text-red-700">{detail.error}</p>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* RCA report */}
+      {rca && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Root Cause Analysis</CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
+                {rca.root_cause_category}
+              </span>
+              <span className="text-sm text-neutral-600">
+                Confidence:{" "}
+                <span className="font-semibold text-neutral-900">
+                  {Math.round((rca.confidence ?? 0) * 100)}%
+                </span>
+              </span>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-neutral-800">
+                Root cause
+              </h4>
+              <p className="text-sm text-neutral-700">{rca.root_cause}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-neutral-800">
+                Reasoning
+              </h4>
+              <p className="whitespace-pre-wrap text-sm text-neutral-700">
+                {rca.reasoning}
+              </p>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Evidence */}
+      {evidence.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Evidence ({evidence.length})</CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-3">
+            {evidence.map((e, i) => (
+              <div
+                key={i}
+                className="rounded-md border border-neutral-200 p-3"
+              >
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-mono text-neutral-400">
+                    #{i}
+                  </span>
+                  <span className="text-xs font-medium text-neutral-600">
+                    {e.source_agent}
+                  </span>
+                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-600">
+                    {e.kind}
+                  </span>
+                  <SeverityBadge severity={e.severity} />
+                </div>
+                <p className="text-sm text-neutral-800">{e.summary}</p>
+                {e.detail && (
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-neutral-500">
+                    {e.detail}
+                  </p>
+                )}
+              </div>
+            ))}
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Recommendations */}
+      {recommendations.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recommendations ({recommendations.length})</CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-4">
+            {recommendations.map((r, i) => (
+              <div
+                key={i}
+                className="rounded-md border border-neutral-200 p-3"
+              >
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  {typeof r.priority === "number" && (
+                    <span className="text-xs font-mono text-neutral-400">
+                      #{r.priority}
+                    </span>
+                  )}
+                  <h4 className="text-sm font-semibold text-neutral-900">
+                    {r.title}
+                  </h4>
+                  <span className="rounded border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-[11px] text-neutral-600">
+                    risk: {r.risk}
+                  </span>
+                  {r.requires_approval && (
+                    <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
+                      requires approval
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-neutral-700">{r.rationale}</p>
+                {r.commands && r.commands.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {r.commands.map((cmd, j) => (
+                      <Code key={j}>{cmd}</Code>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </CardBody>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function Meta({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs uppercase text-neutral-400">{label}</div>
+      <div className="text-neutral-800">{value}</div>
+    </div>
+  );
+}

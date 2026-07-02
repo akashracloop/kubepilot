@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install dev-up dev-down smoke-test test test-unit lint typecheck format clean kind-up kind-down
+.PHONY: help install dev-up dev-down smoke-test test test-unit lint typecheck format clean kind-up kind-down eval eval-test
 
 PYTHON ?= python3
 UV ?= uv
@@ -38,6 +38,12 @@ test-unit: ## Run unit tests (no integration markers)
 
 test-integration: ## Run integration tests (requires dev-up)
 	$(UV) run pytest -m integration
+
+eval: ## Run the golden RCA eval against a live LLM (needs ANTHROPIC_API_KEY or OPENAI_API_KEY)
+	$(UV) run python -m eval.harness.run_eval
+
+eval-test: ## Run the deterministic eval-harness self-test (no LLM key needed)
+	$(UV) run pytest eval
 
 lint: ## Lint with ruff
 	$(UV) run ruff check .
