@@ -1,0 +1,30 @@
+# Datadog profile — serve metrics + logs from the KubePilot Datadog adapter
+# (services/mcp-datadog) instead of the reference mcp-prom / mcp-loki servers.
+# See docs/features/observability-adapters.md. Layer on top of another profile:
+#
+#   kubectl create secret generic datadog-creds \
+#     --from-literal=api-key=$DD_API_KEY --from-literal=app-key=$DD_APP_KEY
+#
+#   helm install kubepilot-ai ./charts/kubepilot-ai \
+#     -f charts/kubepilot-ai/values-prod-small.yaml \
+#     -f charts/kubepilot-ai/values-datadog.yaml \
+#     --set-string mcp.datadog.credentialsSecretRef=datadog-creds
+
+# Deploy the Datadog adapter; stop deploying the reference metrics/logs servers.
+mcp:
+  datadog:
+    enabled: true
+    # site: datadoghq.eu            # override for EU / other Datadog sites
+    # credentialsSecretRef: datadog-creds
+  prom:
+    enabled: false
+  loki:
+    enabled: false
+
+apiGateway:
+  # Repoint the metrics + logs capabilities at the Datadog adapter. The gateway's
+  # capability router dedupes by URL, so both share one client. No agent change —
+  # the adapter returns KubePilot's curated MetricSeries / LogLine shapes.
+  extraEnv:
+    KUBEPILOT_API_MCP__PROM: "http://mcp-datadog:8080"
+    KUBEPILOT_API_MCP__LOKI: "http://mcp-datadog:8080"
