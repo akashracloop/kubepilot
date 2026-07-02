@@ -45,17 +45,31 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
     from kubepilot_orch.config import load_settings as load_orch_settings
     from kubepilot_orch.graph import AgentDeps, build_graph
     from kubepilot_orch.llm.factory import build_router
-    from kubepilot_orch.mcp.client import MCPClient
+    from kubepilot_orch.mcp.adapter import Capability, build_router_from_endpoints
 
     orch_settings = load_orch_settings()
+
+    # Capability-based MCP routing: each domain maps to an endpoint. Endpoints that
+    # share a URL share ONE client, so pointing metrics/logs/tracing at a single
+    # Grafana MCP URL is a config-only swap (see docs/mcp-adapters.md).
+    endpoints: dict[str, str] = {
+        Capability.KUBERNETES: settings.mcp.k8s,
+        Capability.METRICS: settings.mcp.prom,
+        Capability.LOGS: settings.mcp.loki,
+    }
+    if settings.mcp.tempo:
+        endpoints[Capability.TRACING] = settings.mcp.tempo
+    if settings.mcp.ci:
+        endpoints[Capability.DEPLOYMENT] = settings.mcp.ci
+    mcp = build_router_from_endpoints(endpoints)
+
     deps = AgentDeps(
         llm=build_router(orch_settings),
-        mcp_k8s=MCPClient("mcp-k8s", settings.mcp.k8s),
-        mcp_prom=MCPClient("mcp-prom", settings.mcp.prom),
-        mcp_loki=MCPClient("mcp-loki", settings.mcp.loki),
-        # Phase 2 specialists — only wired when their MCP endpoint is configured.
-        mcp_tempo=MCPClient("mcp-tempo", settings.mcp.tempo) if settings.mcp.tempo else None,
-        mcp_ci=MCPClient("mcp-ci", settings.mcp.ci) if settings.mcp.ci else None,
+        mcp_k8s=mcp.client(Capability.KUBERNETES),
+        mcp_prom=mcp.client(Capability.METRICS),
+        mcp_loki=mcp.client(Capability.LOGS),
+        mcp_tempo=mcp.client(Capability.TRACING) if mcp.has(Capability.TRACING) else None,
+        mcp_ci=mcp.client(Capability.DEPLOYMENT) if mcp.has(Capability.DEPLOYMENT) else None,
         memory=_build_memory(settings, orch_settings) if settings.memory_enabled else None,
     )
     return build_graph(deps, checkpointer=checkpointer)

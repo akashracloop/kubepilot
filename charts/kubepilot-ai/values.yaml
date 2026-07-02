@@ -49,6 +49,9 @@ apiGateway:
     # Set `apiKey` to have the chart render the Secret; else create it out of band.
     secretName: kubepilot-api-auth
     apiKey: ""
+  # Extra env vars appended LAST (so they override templated ones). Use to repoint
+  # MCP endpoints at a replacement server, e.g. a Grafana MCP. See docs/mcp-adapters.md.
+  extraEnv: {}
   resources:
     requests:
       cpu: 200m
