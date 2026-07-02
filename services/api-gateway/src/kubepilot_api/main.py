@@ -12,6 +12,7 @@ and a scripted graph; production uses ``app`` from this module.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -91,7 +92,12 @@ def build_app(
     @asynccontextmanager
     async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info("api_starting", version=__version__, environment=settings.environment)
+
+        # AgentOps: enable OTel tracing when a Phoenix/OTLP endpoint is configured.
         from kubepilot_orch.checkpointing import open_checkpointer
+        from kubepilot_orch.observability import setup_tracing
+
+        setup_tracing("kubepilot-api", os.environ.get("KUBEPILOT_OTEL_EXPORTER_ENDPOINT"))
 
         # If the graph wasn't injected, build it here under an open checkpointer.
         if orchestrator is None:

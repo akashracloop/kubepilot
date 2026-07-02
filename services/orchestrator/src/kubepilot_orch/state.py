@@ -120,6 +120,10 @@ class InvestigationState(BaseModel):
     confidence: float | None = None
     failed_with: str | None = None
 
+    # AgentOps token-cost ledger — sum of per-agent token usage, stamped by
+    # finalize. Additive field (default 0): older checkpoints deserialize cleanly.
+    total_tokens_used: int = 0
+
     # Trace metadata
     started_at: datetime
     finished_at: datetime | None = None
