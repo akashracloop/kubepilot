@@ -108,6 +108,11 @@ class AgentDeps:
     # without it (or without mcp_write) the execute node resolves the approval
     # outcome but performs no writes.
     policy: Any | None = None  # RemediationPolicy | None
+    # Optional post-remediation signal fetch: (state) -> (before, after) signal
+    # snapshots. When provided, the execute node validates the fix (W9) and
+    # auto-rolls-back reversible actions on a regression (W8). Without it, the
+    # outcome is closed unless an execution failed.
+    remediation_signal_fn: Any | None = None
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -258,14 +263,32 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         records = await executor.execute_plan(
             plan, state.approvals, mcp_write=deps.mcp_write, policy=deps.policy
         )
-        failed = any(r.status == "failed" for r in records)
-        return {
+        update: dict[str, Any] = {
             "executions": records,
-            # W9 post-validation refines this; for now, failure → reopened.
-            "remediation_outcome": "reopened" if failed else "closed",
             "current_step": "remediation_executed",
             "completed_agents": ["remediation_exec"],
         }
+        failed = any(r.status == "failed" for r in records)
+        if failed:
+            update["remediation_outcome"] = "reopened"
+            return update
+
+        # W9: validate the fix against post-remediation signals; auto-rollback +
+        # reopen on regression, close on improvement. Without a signal fetcher we
+        # can only conclude the writes succeeded.
+        if deps.remediation_signal_fn is not None:
+            from kubepilot_orch.remediation import validation
+
+            before, after = await deps.remediation_signal_fn(state)
+            result = await validation.finalize_remediation(
+                records, before, after, mcp_write=deps.mcp_write
+            )
+            update["remediation_outcome"] = result.outcome
+            if result.rollbacks:
+                update["rollbacks"] = result.rollbacks
+        else:
+            update["remediation_outcome"] = "closed"
+        return update
 
     graph = StateGraph(InvestigationState)
 
