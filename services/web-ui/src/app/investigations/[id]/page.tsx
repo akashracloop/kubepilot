@@ -57,6 +57,7 @@ export default function InvestigationDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const seq = useRef(0);
   const seen = useRef<Set<string>>(new Set());
+  const refreshing = useRef(false);
 
   function pushProgress(label: string) {
     if (seen.current.has(label)) return; // dedupe seeded vs streamed
@@ -90,6 +91,22 @@ export default function InvestigationDetailPage() {
       }
     }
 
+    // Refetch the snapshot as nodes complete so the result sections (RCA, critic,
+    // knowledge, …) populate incrementally instead of only after a manual refresh.
+    // Guarded so overlapping node events don't stack up requests.
+    async function refreshDetail() {
+      if (refreshing.current) return;
+      refreshing.current = true;
+      try {
+        const full = await getInvestigation(id);
+        if (!cancelled) setDetail(full);
+      } catch {
+        /* transient — the next event or finalize() will catch up */
+      } finally {
+        refreshing.current = false;
+      }
+    }
+
     function onEvent(evt: StreamEvent) {
       if (cancelled) return;
       const data = (evt.data ?? {}) as Record<string, unknown>;
@@ -101,6 +118,7 @@ export default function InvestigationDetailPage() {
           return;
         case "node_completed":
           pushProgress(`${(data.node as string) || "node"} completed`);
+          void refreshDetail(); // pull the growing state so sections appear live
           return;
         case "investigation_awaiting_approval":
           pushProgress("Awaiting approval");
