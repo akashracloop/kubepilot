@@ -223,6 +223,10 @@ class ExecutionRecord(BaseModel):
     status: str  # "dry_run" | "succeeded" | "failed" | "skipped"
     dry_run: bool = True
     output: str | None = None
+    # Captured pre-execution state used to auto-revert (e.g. {"replicas": 3} for a
+    # scale, {"image": "svc:v1"} for a patch_image). None when not captured / not
+    # needed (cordon↔uncordon are self-inverting).
+    pre_state: dict[str, Any] | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
 

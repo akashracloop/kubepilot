@@ -14,6 +14,7 @@ touching a real cluster.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -62,6 +63,7 @@ async def execute_plan(
     *,
     mcp_write: MCPClient,
     policy: RemediationPolicy | None,
+    pre_state_fn: Callable[[Any], Awaitable[dict[str, Any] | None]] | None = None,
     now: datetime | None = None,
 ) -> list[ExecutionRecord]:
     """Execute the approved, in-policy actions of a plan. Returns audited records."""
@@ -115,7 +117,14 @@ async def execute_plan(
             records.append(rec)
             continue
 
-        # 3. Execute via the write MCP (dry-run until its apply flag is on).
+        # 3. Capture pre-execution state (for auto-rollback) before mutating.
+        if pre_state_fn is not None:
+            try:
+                rec.pre_state = await pre_state_fn(action)
+            except Exception as e:  # capture failure must not block execution
+                log.warning("pre_state_capture_failed", tool=action.tool, error=str(e))
+
+        # 4. Execute via the write MCP (dry-run until its apply flag is on).
         try:
             result = await mcp_write.invoke(
                 action.tool,
