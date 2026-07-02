@@ -163,6 +163,10 @@ class IsotonicCalibrator:
             return y0
         return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
 
+    def curve(self) -> list[dict[str, float]]:
+        """The fitted raw→calibrated map as plottable points (for the AgentOps plot)."""
+        return [{"raw": x, "calibrated": y} for x, y in zip(self._xs, self._ys, strict=True)]
+
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe form for persistence / shipping a trained calibrator."""
         return {"kind": "isotonic", "xs": list(self._xs), "ys": list(self._ys)}
