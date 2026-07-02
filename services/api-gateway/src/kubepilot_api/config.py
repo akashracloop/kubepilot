@@ -97,6 +97,11 @@ class ApiSettings(BaseSettings):
     # restart to roll a prompt back in <5 min. Empty → each prompt serves its latest.
     prompt_active_versions: dict[str, str] = Field(default_factory=dict)
 
+    # Optional LLM pass to polish incident-timeline labels at finalize (ordering
+    # stays deterministic). Off by default — the static labels are the reliable
+    # baseline; enabling adds one cheap summarization call per investigation.
+    timeline_llm_labels: bool = False
+
 
 def load_settings() -> ApiSettings:
     return ApiSettings()

@@ -76,3 +76,47 @@ async def test_finalize_populates_timeline() -> None:
     # Deterministic ordering holds through finalize.
     times = [e.at for e in update["timeline"]]
     assert times == sorted(times)
+
+
+# ---- Optional LLM label refinement (fails open) ---------------------------
+
+import json  # noqa: E402
+
+import pytest  # noqa: E402
+from kubepilot_orch.testing import ScriptedLLM, build_router, llm_text  # noqa: E402
+from kubepilot_orch.timeline import TimelineEntry, refine_labels  # noqa: E402
+
+
+def _entry(label: str, minute: int) -> TimelineEntry:
+    return TimelineEntry(
+        at=datetime(2026, 7, 2, 10, minute, tzinfo=UTC),
+        label=label,
+        description=f"event {label}",
+        source="test",
+        severity=Severity.INFO,
+    )
+
+
+@pytest.mark.asyncio
+async def test_refine_labels_applies_model_labels_in_order() -> None:
+    entries = [_entry("deploy", 0), _entry("log_errors", 5)]
+    scripted = ScriptedLLM(responses=[llm_text(json.dumps(["deploy_started", "error_spike"]))])
+    refined = await refine_labels(entries, llm=build_router(scripted))
+    assert [e.label for e in refined] == ["deploy_started", "error_spike"]
+    # Ordering / timestamps untouched.
+    assert [e.at for e in refined] == [e.at for e in entries]
+
+
+@pytest.mark.asyncio
+async def test_refine_labels_fails_open_on_bad_output() -> None:
+    entries = [_entry("deploy", 0), _entry("log_errors", 5)]
+    for bad in ("not json", json.dumps(["only-one"]), json.dumps({"x": 1})):
+        scripted = ScriptedLLM(responses=[llm_text(bad)])
+        refined = await refine_labels(entries, llm=build_router(scripted))
+        assert [e.label for e in refined] == ["deploy", "log_errors"]  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_refine_labels_empty_is_noop() -> None:
+    scripted = ScriptedLLM(responses=[])  # must not be called
+    assert await refine_labels([], llm=build_router(scripted)) == []

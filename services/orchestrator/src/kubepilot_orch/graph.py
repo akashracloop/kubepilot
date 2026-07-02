@@ -35,6 +35,7 @@ from typing import Any
 import structlog
 from langgraph.graph import END, START, StateGraph
 
+from kubepilot_orch import timeline
 from kubepilot_orch.agents import (
     critic_agent,
     deployment_agent,
@@ -91,6 +92,9 @@ class AgentDeps:
     # escalate-to-human flag. Off by default so the minimal graph is unchanged; the
     # api-gateway turns it on via config.
     enable_critic: bool = False
+    # Optional LLM pass to polish timeline labels at finalize (ordering untouched).
+    # Off by default — deterministic labels are the reliable baseline.
+    timeline_llm_labels: bool = False
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -193,6 +197,9 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         # the critic's interim value (W2), which only tempered by evidence gaps.
         if deps.calibrator is not None and deps.calibrator.is_fitted and state.rca is not None:
             update["calibrated_confidence"] = deps.calibrator.calibrate(state.rca.confidence)
+        # Optional LLM polish of timeline labels (ordering untouched, fails open).
+        if deps.timeline_llm_labels and update.get("timeline"):
+            update["timeline"] = await timeline.refine_labels(update["timeline"], llm=deps.llm)
         if deps.memory is not None:
             # Index the concluded incident so future investigations can recall it.
             await memory_agent.index_incident(state, retriever=deps.memory)

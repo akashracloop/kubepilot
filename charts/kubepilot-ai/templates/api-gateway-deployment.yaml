@@ -66,6 +66,8 @@ spec:
               value: {{ .Values.apiGateway.phase3.criticEnabled | quote }}
             - name: KUBEPILOT_API_KNOWLEDGE_ENABLED
               value: {{ .Values.apiGateway.phase3.knowledgeEnabled | quote }}
+            - name: KUBEPILOT_API_TIMELINE_LLM_LABELS
+              value: {{ .Values.apiGateway.phase3.timelineLlmLabels | quote }}
             {{- if .Values.apiGateway.phase3.knowledgeSnapshotPath }}
             - name: KUBEPILOT_API_KNOWLEDGE_SNAPSHOT_PATH
               value: {{ .Values.apiGateway.phase3.knowledgeSnapshotPath | quote }}

@@ -83,6 +83,7 @@ def _default_compiled_graph(
         knowledge=knowledge or (_build_knowledge(settings) if settings.knowledge_enabled else None),
         calibrator=_build_calibrator(settings),
         enable_critic=settings.critic_enabled,
+        timeline_llm_labels=settings.timeline_llm_labels,
     )
     return build_graph(deps, checkpointer=checkpointer)
 

@@ -58,6 +58,7 @@ apiGateway:
     knowledgeSnapshotPath: "" # e.g. /etc/kubepilot/knowledge/snapshot.json (mounted)
     calibratorPath: "" # e.g. /etc/kubepilot/calibrator.json (mounted)
     promptActiveVersions: {} # e.g. {"rca_agent": "v1"} to roll a prompt back
+    timelineLlmLabels: false # opt-in LLM polish of timeline labels (adds a call)
     # Periodic knowledge-graph ingestion (the CronJob trigger). Point
     # snapshotConfigMap at a ConfigMap holding key `snapshot.json` (your exported
     # service catalog / label scan); it's ingested into Postgres on the schedule.
