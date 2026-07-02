@@ -39,6 +39,7 @@ from kubepilot_orch.agents import (
     critic_agent,
     deployment_agent,
     finalize,
+    knowledge_agent,
     kubernetes_agent,
     logs_agent,
     memory_agent,
@@ -48,6 +49,7 @@ from kubepilot_orch.agents import (
     supervisor,
     tracing_agent,
 )
+from kubepilot_orch.knowledge.retriever import KnowledgeRetriever
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.mcp.client import MCPClient
 from kubepilot_orch.memory.retriever import MemoryRetriever
@@ -74,6 +76,10 @@ class AgentDeps:
     # Phase 2 long-term memory. When present, a retrieval node runs before RCA and
     # the concluded incident is indexed at finalize.
     memory: MemoryRetriever | None = None
+    # Phase 3 cluster knowledge graph. When present, a knowledge node runs before
+    # RCA (beside memory) and injects owner/dependency/SLO context into
+    # state.knowledge_context.
+    knowledge: KnowledgeRetriever | None = None
     # Phase 3 critic. When True, a critic node runs between RCA and recommendation,
     # producing an independent agreement score, a critic-adjusted confidence, and an
     # escalate-to-human flag. Off by default so the minimal graph is unchanged; the
@@ -153,6 +159,11 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         incidents = await memory_agent.run(state, retriever=deps.memory)
         return memory_agent.to_state_update(incidents)
 
+    async def knowledge_node(state: InvestigationState) -> dict[str, Any]:
+        assert deps.knowledge is not None  # node only added when present
+        facts = await knowledge_agent.run(state, retriever=deps.knowledge)
+        return knowledge_agent.to_state_update(facts)
+
     async def rca_node(state: InvestigationState) -> dict[str, Any]:
         report = await rca_agent.run(state, llm=deps.llm)
         return rca_agent.to_state_update(report)
@@ -193,19 +204,29 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         graph.add_node("deployment", deployment_node)
         specialists.append("deployment")
 
-    # Phase 2 memory: a retrieval node between the specialist fan-in and RCA, so
-    # the RCA agent sees similar past incidents. Without memory, specialists → rca.
-    fan_in = "rca"
+    # Pre-RCA context collectors run between the specialist fan-in and RCA, each
+    # feeding a slice of corroborating context into state before RCA reasons:
+    #   - Phase 2 memory     → similar past incidents (state.memory_context)
+    #   - Phase 3 knowledge  → cluster graph: owner/deps/SLOs (state.knowledge_context)
+    # They run in parallel; RCA fans in after all of them. With none present the
+    # specialists feed RCA directly (the Phase 1 shape, byte-for-byte unchanged).
+    pre_rca: list[str] = []
     if deps.memory is not None:
         graph.add_node("memory", memory_node)
-        graph.add_edge("memory", "rca")
-        fan_in = "memory"
+        pre_rca.append("memory")
+    if deps.knowledge is not None:
+        graph.add_node("knowledge", knowledge_node)
+        pre_rca.append("knowledge")
 
-    # START → supervisor → fan out to all specialists → fan in.
+    # START → supervisor → fan out to all specialists → (collectors) → rca.
     graph.add_edge(START, "supervisor")
+    collectors = pre_rca or ["rca"]
     for name in specialists:
         graph.add_edge("supervisor", name)
-        graph.add_edge(name, fan_in)
+        for collector in collectors:
+            graph.add_edge(name, collector)
+    for collector in pre_rca:
+        graph.add_edge(collector, "rca")
 
     # Phase 3 critic: an adversarial review between RCA and recommendation. When
     # enabled, rca → critic → recommendation; otherwise rca → recommendation.
@@ -223,6 +244,7 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         "graph_built",
         specialists=specialists,
         memory=deps.memory is not None,
+        knowledge=deps.knowledge is not None,
         critic=deps.enable_critic,
         checkpointer=checkpointer is not None,
     )

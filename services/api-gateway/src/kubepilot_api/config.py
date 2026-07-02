@@ -76,6 +76,11 @@ class ApiSettings(BaseSettings):
     # escalate-to-human flag. On by default for Phase 3.
     critic_enabled: bool = True
 
+    # Phase 3 cluster knowledge graph: a pre-RCA node that injects owner/dependency/
+    # SLO context. Off by default until the graph is populated by ingestion; an empty
+    # graph would just add a no-op node.
+    knowledge_enabled: bool = False
+
 
 def load_settings() -> ApiSettings:
     return ApiSettings()

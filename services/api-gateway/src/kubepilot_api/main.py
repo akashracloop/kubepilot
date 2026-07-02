@@ -72,6 +72,7 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
         mcp_tempo=mcp.client(Capability.TRACING) if mcp.has(Capability.TRACING) else None,
         mcp_ci=mcp.client(Capability.DEPLOYMENT) if mcp.has(Capability.DEPLOYMENT) else None,
         memory=_build_memory(settings, orch_settings) if settings.memory_enabled else None,
+        knowledge=_build_knowledge(settings) if settings.knowledge_enabled else None,
         enable_critic=settings.critic_enabled,
     )
     return build_graph(deps, checkpointer=checkpointer)
@@ -99,6 +100,28 @@ def _build_memory(settings: ApiSettings, orch_settings: Any) -> Any:
         else InMemoryMemoryStore()
     )
     return MemoryRetriever(embedder, store)
+
+
+def _build_knowledge(settings: ApiSettings) -> Any:
+    """Construct the cluster knowledge-graph retriever (Phase 3).
+
+    The store persists the service graph (owners/deps/SLOs); a separate ingestion
+    path (labels / ownership map / ServiceMonitors / dependency discovery) populates
+    it. An empty graph simply yields empty knowledge_context — the RCA degrades to
+    its Phase-2 behaviour.
+    """
+    from kubepilot_orch.knowledge import (
+        InMemoryKnowledgeStore,
+        KnowledgeRetriever,
+        PgKnowledgeStore,
+    )
+
+    store: Any = (
+        PgKnowledgeStore(settings.db.url)
+        if settings.storage == "postgres"
+        else InMemoryKnowledgeStore()
+    )
+    return KnowledgeRetriever(store)
 
 
 def _default_repository(settings: ApiSettings) -> InvestigationRepository:
