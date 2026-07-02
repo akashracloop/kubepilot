@@ -95,6 +95,20 @@ mcp:
     upstream:
       url: http://loki.observability.svc.cluster.local:3100
       bearerTokenSecretRef: ""
+  # Phase 2 — off by default; enable when Tempo / a CI backend is available.
+  # When enabled, the gateway adds the Tracing / Deployment specialist branches.
+  tempo:
+    enabled: false
+    image: { repository: kubepilot-mcp-tempo, tag: 0.1.0-dev }
+    upstream:
+      url: http://tempo.observability.svc.cluster.local:3200
+      bearerTokenSecretRef: "" # optional
+  ci:
+    enabled: false
+    image: { repository: kubepilot-mcp-ci, tag: 0.1.0-dev }
+    backend: github_actions # github_actions | jenkins | argocd
+    url: "" # backend API base URL
+    tokenSecretRef: "" # Secret (key: token) with a read-only CI token
 
 # -----------------------------------------------------------------------------
 # Persistence — bundled single-node Postgres/Redis for dev & prod-small. For

@@ -14,6 +14,8 @@ members = [
     "services/mcp-k8s",
     "services/mcp-prom",
     "services/mcp-loki",
+    "services/mcp-tempo",
+    "services/mcp-ci",
 ]
 
 [tool.uv]

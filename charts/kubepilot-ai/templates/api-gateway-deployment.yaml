@@ -53,6 +53,14 @@ spec:
               value: "http://mcp-prom.{{ .Release.Namespace }}.svc.cluster.local:8080"
             - name: KUBEPILOT_API_MCP__LOKI
               value: "http://mcp-loki.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            {{- if .Values.mcp.tempo.enabled }}
+            - name: KUBEPILOT_API_MCP__TEMPO
+              value: "http://mcp-tempo.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            {{- end }}
+            {{- if .Values.mcp.ci.enabled }}
+            - name: KUBEPILOT_API_MCP__CI
+              value: "http://mcp-ci.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            {{- end }}
             # ---- Orchestrator settings (in-process, KUBEPILOT_*) ----
             {{- if or .Values.postgres.enabled .Values.postgres.externalUrl }}
             - name: KUBEPILOT_DB__URL

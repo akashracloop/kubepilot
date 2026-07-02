@@ -13,9 +13,11 @@ resolution-markers = [
 members = [
     "kubepilot-ai",
     "kubepilot-api",
+    "kubepilot-mcp-ci",
     "kubepilot-mcp-k8s",
     "kubepilot-mcp-loki",
     "kubepilot-mcp-prom",
+    "kubepilot-mcp-tempo",
     "kubepilot-orch",
 ]
 
@@ -1011,6 +1013,29 @@ requires-dist = [
 ]
 
 [[package]]
+name = "kubepilot-mcp-ci"
+version = "0.1.0.dev0"
+source = { editable = "services/mcp-ci" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "pydantic" },
+    { name = "structlog" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "mcp", specifier = ">=1.0.0" },
+    { name = "pydantic", specifier = ">=2.9.0" },
+    { name = "structlog", specifier = ">=24.4.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
+]
+
+[[package]]
 name = "kubepilot-mcp-k8s"
 version = "0.1.0.dev0"
 source = { editable = "services/mcp-k8s" }
@@ -1060,6 +1085,29 @@ requires-dist = [
 name = "kubepilot-mcp-prom"
 version = "0.1.0.dev0"
 source = { editable = "services/mcp-prom" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "pydantic" },
+    { name = "structlog" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "mcp", specifier = ">=1.0.0" },
+    { name = "pydantic", specifier = ">=2.9.0" },
+    { name = "structlog", specifier = ">=24.4.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
+]
+
+[[package]]
+name = "kubepilot-mcp-tempo"
+version = "0.1.0.dev0"
+source = { editable = "services/mcp-tempo" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },

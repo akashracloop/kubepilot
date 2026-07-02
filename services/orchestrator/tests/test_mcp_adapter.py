@@ -42,9 +42,7 @@ def test_default_router_includes_optional_p2_domains() -> None:
 
 
 def test_unknown_capability_raises_with_available_list() -> None:
-    router = build_default_router(
-        kubernetes=_client("k"), metrics=_client("m"), logs=_client("l")
-    )
+    router = build_default_router(kubernetes=_client("k"), metrics=_client("m"), logs=_client("l"))
     with pytest.raises(UnknownCapabilityError) as exc:
         router.client("tracing")
     assert exc.value.capability == "tracing"

@@ -37,8 +37,7 @@ class UnknownCapabilityError(KeyError):
         self.capability = capability
         self.available = available
         super().__init__(
-            f"No MCP server configured for capability {capability!r}; "
-            f"available: {available}"
+            f"No MCP server configured for capability {capability!r}; available: {available}"
         )
 
 

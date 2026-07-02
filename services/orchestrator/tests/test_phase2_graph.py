@@ -109,7 +109,9 @@ def _dispatcher(scripts: dict[str, ScriptedLLM]) -> object:
                             Recommendation(
                                 title="Roll back deployment",
                                 rationale="restore previous image",
-                                commands=["kubectl rollout undo deployment/checkout-service -n prod"],
+                                commands=[
+                                    "kubectl rollout undo deployment/checkout-service -n prod"
+                                ],
                                 priority=1,
                             ).model_dump()
                         ]
@@ -131,7 +133,16 @@ def _dispatcher(scripts: dict[str, ScriptedLLM]) -> object:
     class Dispatcher:
         name = "dispatcher"
 
-        async def chat(self, messages, *, model, tools=None, response_schema=None, temperature=0.0, max_tokens=None):  # type: ignore[no-untyped-def]
+        async def chat(
+            self,
+            messages,
+            *,
+            model,
+            tools=None,
+            response_schema=None,
+            temperature=0.0,
+            max_tokens=None,
+        ):  # type: ignore[no-untyped-def]
             sys = next((m.content for m in messages if m.role == "system"), "")
             for keyword, llm in by_keyword:
                 if keyword in sys:
@@ -153,9 +164,15 @@ async def test_five_specialists_run_when_tempo_and_ci_present() -> None:
     scripts = _specialist_scripts()
     deps = AgentDeps(
         llm=build_router(_dispatcher(scripts)),  # type: ignore[arg-type]
-        mcp_k8s=build_mcp_client(_one_tool_handler("list_pods", [{"name": "p"}]), server_name="k8s"),
-        mcp_prom=build_mcp_client(_one_tool_handler("query_range", {"series": []}), server_name="prom"),
-        mcp_loki=build_mcp_client(_one_tool_handler("search_exceptions", {"total": 0}), server_name="loki"),
+        mcp_k8s=build_mcp_client(
+            _one_tool_handler("list_pods", [{"name": "p"}]), server_name="k8s"
+        ),
+        mcp_prom=build_mcp_client(
+            _one_tool_handler("query_range", {"series": []}), server_name="prom"
+        ),
+        mcp_loki=build_mcp_client(
+            _one_tool_handler("search_exceptions", {"total": 0}), server_name="loki"
+        ),
         mcp_tempo=build_mcp_client(
             _one_tool_handler("query_traces", {"trace_id": "t1"}), server_name="tempo"
         ),

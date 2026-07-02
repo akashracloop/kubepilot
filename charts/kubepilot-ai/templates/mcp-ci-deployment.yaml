@@ -1,0 +1,74 @@
+{{- if .Values.mcp.ci.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-mcp-ci
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-ci
+spec:
+  replicas: {{ .Values.mcp.ci.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kubepilot.name" . }}
+      app.kubernetes.io/component: mcp-ci
+  template:
+    metadata:
+      labels:
+        {{- include "kubepilot.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-ci
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10005
+        runAsGroup: 10005
+        fsGroup: 10005
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp-ci
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.mcp.ci.image.repository }}:{{ .Values.mcp.ci.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: KUBEPILOT_CI_BACKEND
+              value: {{ .Values.mcp.ci.backend | quote }}
+            {{- if .Values.mcp.ci.url }}
+            - name: KUBEPILOT_CI_URL
+              value: {{ .Values.mcp.ci.url | quote }}
+            {{- end }}
+            {{- if .Values.mcp.ci.tokenSecretRef }}
+            - name: KUBEPILOT_CI_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mcp.ci.tokenSecretRef }}
+                  key: token
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /mcp/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /mcp/health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+{{- end }}
