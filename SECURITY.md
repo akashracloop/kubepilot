@@ -54,7 +54,7 @@ updates.
 
 - Preferred: open a private report via GitHub → **Security → Report a
   vulnerability** (private vulnerability reporting) on this repository.
-- Or email the maintainer directly: **akash.sahani@whilter.ai**.
+- Or email the maintainer directly: **akarshsahani@gmail.com**.
 
 Include, where possible: affected component/version, reproduction steps or a
 proof-of-concept, impact, and any suggested remediation. Please give us a
