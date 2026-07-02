@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install dev-up dev-down smoke-test test test-unit lint typecheck format clean kind-up kind-down minikube-up minikube-down eval eval-test
+.PHONY: help install dev-up dev-down smoke-test test test-unit lint typecheck format clean kind-up kind-down minikube-up minikube-down eval eval-calibrator eval-test
 
 PYTHON ?= python3
 UV ?= uv
@@ -47,6 +47,9 @@ test-integration: ## Run integration tests (requires dev-up)
 
 eval: ## Run the golden RCA eval against a live LLM (needs ANTHROPIC_API_KEY or OPENAI_API_KEY)
 	$(UV) run python -m eval.harness.run_eval
+
+eval-calibrator: ## Fit the confidence calibrator from the golden run → dist/calibrator.json (needs a live key)
+	$(UV) run python -m eval.harness.run_eval --emit-calibrator dist/calibrator.json
 
 eval-test: ## Run the deterministic eval-harness self-test (no LLM key needed)
 	$(UV) run pytest eval

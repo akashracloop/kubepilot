@@ -19,9 +19,12 @@ self-test (``test_harness.py``) never imports the live router.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import json
 import os
 import sys
+from pathlib import Path
 
 from kubepilot_orch.config import LLMRoleBinding
 from kubepilot_orch.llm.base import LLMProvider, Role
@@ -72,15 +75,44 @@ async def _run_all(scenarios: list[Scenario], router: LLMRouter) -> list[ScoreBr
     return breakdowns
 
 
+def _emit_calibrator(breakdowns: list[ScoreBreakdown], path: Path) -> None:
+    """Fit an isotonic calibrator from the golden breakdowns and write its JSON.
+
+    This is the producer for ``apiGateway.phase3.calibratorPath`` — the artifact
+    finalize loads to map raw→empirical confidence. Run in CI post-eval (see
+    eval-gate.yml) and mount the result as a ConfigMap.
+    """
+    from eval.harness.calibration import fit_calibrator
+
+    calibrator = fit_calibrator(breakdowns)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(calibrator.to_dict(), indent=2), encoding="utf-8")
+    print(f"\nWrote calibrator ({'fitted' if calibrator.is_fitted else 'empty'}) → {path}")
+
+
 def main() -> int:
     from eval.harness.loader import load_heldout
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--emit-calibrator",
+        metavar="PATH",
+        type=Path,
+        default=None,
+        help="Fit an isotonic calibrator from the golden run and write its JSON to PATH.",
+    )
+    args = parser.parse_args()
 
     router = build_live_router()
 
     scenarios = load_scenarios()
     print(f"Running {len(scenarios)} golden RCA scenarios (live LLM)...\n")
-    golden = aggregate(asyncio.run(_run_all(scenarios, router)))
+    golden_breakdowns = asyncio.run(_run_all(scenarios, router))
+    golden = aggregate(golden_breakdowns)
     print(render_report(golden))
+
+    if args.emit_calibrator is not None:
+        _emit_calibrator(golden_breakdowns, args.emit_calibrator)
 
     # Held-out set — scored separately to detect overfitting to golden (§7).
     heldout_scenarios = load_heldout()
