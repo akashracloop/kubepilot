@@ -120,6 +120,7 @@ Move from "tech demo" to "team uses this daily." Add the missing investigation s
 # Phase 3 — Enterprise-Grade Agentic SRE
 
 **Release:** `v0.3.x`
+**Detail:** Full implementation plan in [phase-3-plan.md](./phase-3-plan.md).
 
 ## Goal
 

@@ -34,6 +34,7 @@ Start here. Docs are grouped by what you're trying to do.
 | [reference/roadmap.md](./reference/roadmap.md) | All four phases at a glance. |
 | [reference/phase-1-plan.md](./reference/phase-1-plan.md) | Phase 1 (MVP) implementation plan + Definition of Done. |
 | [reference/phase-2-plan.md](./reference/phase-2-plan.md) | Phase 2 (production-ready) implementation plan + Definition of Done. |
+| [reference/phase-3-plan.md](./reference/phase-3-plan.md) | Phase 3 (enterprise-grade) implementation plan + Definition of Done. |
 
 ---
 
