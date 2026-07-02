@@ -120,7 +120,7 @@ async def refine_labels(entries: list[TimelineEntry], *, llm: LLMRouter) -> list
     in place. Only the ``label`` field changes; timestamps/order/severity are kept.
     """
     from kubepilot_orch.llm.base import Message, Role
-    from kubepilot_orch.llm.parsing import strip_code_fences
+    from kubepilot_orch.llm.parsing import clean_json
 
     if not entries:
         return entries
@@ -138,7 +138,7 @@ async def refine_labels(entries: list[TimelineEntry], *, llm: LLMRouter) -> list
             ],
             temperature=0.0,
         )
-        labels = json.loads(strip_code_fences(resp.content))
+        labels = json.loads(clean_json(resp.content))
     except (ValueError, TypeError) as e:
         log.warning("timeline_refine_failed", error=str(e))
         return entries

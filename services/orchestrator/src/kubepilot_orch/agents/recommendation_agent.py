@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, ValidationError
 from kubepilot_orch.agents.prompt_registry import resolve_prompt
 from kubepilot_orch.guardrails import enforce
 from kubepilot_orch.llm.base import Message, Role
-from kubepilot_orch.llm.parsing import strip_code_fences
+from kubepilot_orch.llm.parsing import clean_json
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.state import InvestigationState, Recommendation
 
@@ -52,7 +52,7 @@ async def run(state: InvestigationState, *, llm: LLMRouter) -> list[Recommendati
         temperature=0.0,
     )
 
-    text = strip_code_fences(resp.content)
+    text = clean_json(resp.content)
     try:
         recs = _RecommendationList.model_validate_json(text).recommendations
     except (ValidationError, ValueError):

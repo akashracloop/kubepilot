@@ -24,7 +24,7 @@ from pydantic import ValidationError
 
 from kubepilot_orch.guardrails import sanitize
 from kubepilot_orch.llm.base import Message, Role, ToolSchema
-from kubepilot_orch.llm.parsing import strip_code_fences
+from kubepilot_orch.llm.parsing import clean_json
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.mcp.client import MCPClient, MCPError
 from kubepilot_orch.state import AgentOutput, Evidence, Severity
@@ -160,7 +160,7 @@ async def run_agent(spec: AgentSpec) -> AgentOutput:
     tokens_total += summary_resp.output_tokens + summary_resp.input_tokens
 
     try:
-        output = AgentOutput.model_validate_json(strip_code_fences(summary_resp.content))
+        output = AgentOutput.model_validate_json(clean_json(summary_resp.content))
     except (ValidationError, ValueError) as e:
         log.error(
             "agent_summary_invalid",

@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 from kubepilot_orch.agents.prompt_registry import resolve_prompt
 from kubepilot_orch.llm.base import Message, Role
-from kubepilot_orch.llm.parsing import strip_code_fences
+from kubepilot_orch.llm.parsing import clean_json
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.state import Critique, Evidence, InvestigationState
 
@@ -66,7 +66,7 @@ async def run(state: InvestigationState, *, llm: LLMRouter) -> Critique:
     )
 
     try:
-        critique = Critique.model_validate_json(strip_code_fences(resp.content))
+        critique = Critique.model_validate_json(clean_json(resp.content))
     except (ValidationError, ValueError) as e:
         log.error("critic_output_invalid", error=str(e), content=resp.content[:500])
         # Fail open: don't lower confidence on our own failure, but leave a note.

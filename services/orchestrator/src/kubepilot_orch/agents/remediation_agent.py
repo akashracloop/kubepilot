@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from kubepilot_orch.agents.prompt_registry import resolve_prompt
 from kubepilot_orch.llm.base import Message, Role
-from kubepilot_orch.llm.parsing import strip_code_fences
+from kubepilot_orch.llm.parsing import clean_json
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.remediation.catalog import WRITE_CATALOG, catalog_prompt
 from kubepilot_orch.state import InvestigationState, RemediationAction, RemediationPlan
@@ -64,7 +64,7 @@ async def run(state: InvestigationState, *, llm: LLMRouter) -> RemediationPlan:
     )
 
     try:
-        proposed = _PlanOutput.model_validate_json(strip_code_fences(resp.content)).actions
+        proposed = _PlanOutput.model_validate_json(clean_json(resp.content)).actions
     except (ValidationError, ValueError) as e:
         log.error("remediation_plan_invalid", error=str(e), content=resp.content[:400])
         return RemediationPlan(actions=[], notes="remediation planning failed — no action proposed")
