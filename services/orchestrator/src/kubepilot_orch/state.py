@@ -20,8 +20,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-# Bump this constant when state shape changes. Additive bumps need no migration entry.
-CURRENT_SCHEMA_VERSION: int = 1
+# Bump this constant when state shape changes. Every step in between needs a
+# MIGRATIONS entry (trivial version-stamp for additive bumps; real transform for
+# breaking ones) — enforced by test_migration_registry_is_complete.
+CURRENT_SCHEMA_VERSION: int = 2
 
 
 def _merge_dicts(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
@@ -88,6 +90,33 @@ class Recommendation(BaseModel):
     estimated_blast_radius: str | None = None  # P4 informational; P1 may set or omit
 
 
+class PastIncident(BaseModel):
+    """A prior incident retrieved from long-term memory (Phase 2, pgvector).
+
+    Injected into ``InvestigationState.memory_context`` before the RCA agent
+    reasons, so it can weigh "have we seen this combination of signals before?"
+    """
+
+    incident_id: UUID
+    summary: str
+    root_cause_category: str | None = None
+    namespace: str | None = None
+    service: str | None = None
+    similarity: float = 0.0  # 0..1 retrieval score (hybrid rank)
+    outcome: str | None = None  # what resolved it, if known
+    occurred_at: datetime | None = None
+
+
+class TimelineEntry(BaseModel):
+    """One ordered event in the incident timeline (Phase 2)."""
+
+    at: datetime
+    label: str  # short machine label, e.g. "deploy_started", "first_anomaly", "oomkilled"
+    description: str
+    source: str  # "kubernetes" | "metrics" | "logs" | "tracing" | "deployment" | ...
+    severity: Severity = Severity.INFO
+
+
 class InvestigationState(BaseModel):
     """Top-level LangGraph state for a single investigation.
 
@@ -124,6 +153,11 @@ class InvestigationState(BaseModel):
     # finalize. Additive field (default 0): older checkpoints deserialize cleanly.
     total_tokens_used: int = 0
 
+    # Phase 2 additive fields (schema v2). Both default to empty so v1 checkpoints
+    # deserialize cleanly (the v1->v2 migration only stamps the version).
+    memory_context: list[PastIncident] = Field(default_factory=list)  # retrieved past incidents
+    timeline: list[TimelineEntry] = Field(default_factory=list)  # ordered incident chronology
+
     # Trace metadata
     started_at: datetime
     finished_at: datetime | None = None
@@ -146,12 +180,16 @@ class CheckpointMigrationError(Exception):
 # Additive-only changes do not need entries — defaults on new fields handle them.
 #
 # Signature: a migration takes the prior-version dict blob and returns the next-version blob.
-# Example for a future v1->v2 break:
-#     def _v1_to_v2(blob: dict[str, Any]) -> dict[str, Any]:
-#         blob["new_required_field"] = derive_from(blob)
-#         blob["schema_version"] = 2
-#         return blob
-MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
+def _v1_to_v2(blob: dict[str, Any]) -> dict[str, Any]:
+    """v1 -> v2: additive only (memory_context, timeline). No data transform — the
+    new fields fill from their defaults on validation; we only stamp the version."""
+    blob = {**blob, "schema_version": 2}
+    return blob
+
+
+MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    1: _v1_to_v2,
+}
 
 
 def load_checkpoint(blob: dict[str, Any]) -> InvestigationState:
