@@ -41,10 +41,10 @@ def _default_compiled_graph(settings: ApiSettings) -> Any:
     Imported lazily so tests can build the app without the langchain dependencies
     when they pass in their own ``compiled_graph``.
     """
-    from kubepilot_orch.config import load_settings as load_orch_settings  # noqa: PLC0415
-    from kubepilot_orch.graph import AgentDeps, build_graph  # noqa: PLC0415
-    from kubepilot_orch.llm.factory import build_router  # noqa: PLC0415
-    from kubepilot_orch.mcp.client import MCPClient  # noqa: PLC0415
+    from kubepilot_orch.config import load_settings as load_orch_settings
+    from kubepilot_orch.graph import AgentDeps, build_graph
+    from kubepilot_orch.llm.factory import build_router
+    from kubepilot_orch.mcp.client import MCPClient
 
     orch_settings = load_orch_settings()
     deps = AgentDeps(
@@ -75,7 +75,9 @@ def build_app(
     """
     settings = settings or load_settings()
     repo = repo or _default_repository(settings)
-    compiled_graph = compiled_graph if compiled_graph is not None else _default_compiled_graph(settings)
+    compiled_graph = (
+        compiled_graph if compiled_graph is not None else _default_compiled_graph(settings)
+    )
     bus = InvestigationBus()
     orchestrator = InvestigationOrchestrator(compiled_graph=compiled_graph, repo=repo, bus=bus)
 

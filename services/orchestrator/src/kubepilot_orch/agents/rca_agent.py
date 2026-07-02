@@ -6,8 +6,6 @@ evidence already in state.evidence and produces a single structured report.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 import structlog
 from pydantic import ValidationError
 
@@ -99,12 +97,13 @@ def to_state_update(report: RCAReport) -> dict:
     """Partial state update produced by the RCA node.
 
     Singleton fields (no reducer needed) — RCA is the only node writing them
-    in this serial position of the graph.
+    in this serial position of the graph. ``finished_at`` is deliberately NOT
+    set here: recommendation + finalize still run after RCA, so the terminal
+    timestamp is owned exclusively by ``finalize_node``.
     """
     return {
         "rca": report,
         "confidence": report.confidence,
         "current_step": "rca_completed",
         "completed_agents": [AGENT_NAME],
-        "finished_at": datetime.now(UTC),
     }

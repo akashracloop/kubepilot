@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from kubepilot_orch.agents import recommendation_agent
@@ -22,7 +22,7 @@ def _state_with_rca(rca: RCAReport) -> InvestigationState:
         namespace="prod",
         service="payment-service",
         rca=rca,
-        started_at=datetime(2026, 6, 23, 10, 7, tzinfo=timezone.utc),
+        started_at=datetime(2026, 6, 23, 10, 7, tzinfo=UTC),
     )
 
 
@@ -57,7 +57,7 @@ async def test_enriches_rca_recommendations_with_concrete_commands() -> None:
             title="Raise memory limit to 2Gi",
             rationale="Short-term mitigation while the underlying cache leak is investigated.",
             commands=[
-                'kubectl set resources deployment/payment-service -n prod --limits=memory=2Gi'
+                "kubectl set resources deployment/payment-service -n prod --limits=memory=2Gi"
             ],
             risk="low",
             reversibility="reversible",
@@ -106,17 +106,14 @@ async def test_forces_requires_approval_on_write_commands() -> None:
 @pytest.mark.asyncio
 async def test_caps_recommendations_at_4() -> None:
     too_many = [
-        Recommendation(title=f"Rec {i}", rationale="...", priority=i + 1)
-        for i in range(10)
+        Recommendation(title=f"Rec {i}", rationale="...", priority=i + 1) for i in range(10)
     ]
     payload = recommendation_agent._RecommendationList(
         recommendations=too_many[:4]
     ).model_dump_json()
     scripted = ScriptedLLM(responses=[llm_text(payload)])
 
-    recs = await recommendation_agent.run(
-        _state_with_rca(_RCA_OOM), llm=build_router(scripted)
-    )
+    recs = await recommendation_agent.run(_state_with_rca(_RCA_OOM), llm=build_router(scripted))
     assert len(recs) <= 4
 
 
@@ -127,7 +124,7 @@ async def test_no_rca_yields_empty_list() -> None:
         query="x",
         namespace="prod",
         rca=None,
-        started_at=datetime(2026, 6, 23, 10, 7, tzinfo=timezone.utc),
+        started_at=datetime(2026, 6, 23, 10, 7, tzinfo=UTC),
     )
     # No LLM call expected since rca is None.
     scripted = ScriptedLLM(responses=[])
@@ -138,9 +135,7 @@ async def test_no_rca_yields_empty_list() -> None:
 @pytest.mark.asyncio
 async def test_invalid_llm_output_falls_back_to_rca_text() -> None:
     scripted = ScriptedLLM(responses=[llm_text("definitely not json")])
-    recs = await recommendation_agent.run(
-        _state_with_rca(_RCA_OOM), llm=build_router(scripted)
-    )
+    recs = await recommendation_agent.run(_state_with_rca(_RCA_OOM), llm=build_router(scripted))
     assert 1 <= len(recs) <= 4
     # Fallback items should still be marked requires_approval (defensive).
     assert all(r.requires_approval for r in recs)

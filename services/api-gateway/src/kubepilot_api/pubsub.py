@@ -12,6 +12,7 @@ intentionally minimal so swapping is a one-file change.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections import defaultdict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -53,9 +54,7 @@ class InvestigationBus:
         finally:
             async with self._lock:
                 if incident_id in self._subscribers:
-                    try:
+                    with contextlib.suppress(ValueError):
                         self._subscribers[incident_id].remove(q)
-                    except ValueError:
-                        pass
                     if not self._subscribers[incident_id]:
                         del self._subscribers[incident_id]

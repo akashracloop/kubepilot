@@ -61,8 +61,16 @@ class AgentDeps:
     mcp_loki: MCPClient
 
 
-def build_graph(deps: AgentDeps) -> Any:
-    """Build and compile the Phase-1 investigation graph."""
+def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
+    """Build and compile the Phase-1 investigation graph.
+
+    ``checkpointer`` is an optional LangGraph checkpointer (e.g. a Postgres
+    ``AsyncPostgresSaver`` in prod, or ``MemorySaver`` in dev). When supplied,
+    every ``astream``/``ainvoke`` call must pass a ``thread_id`` in its config so
+    the investigation's state is persisted and resumable across pod restarts.
+    When ``None`` (the default, used by unit tests), the graph runs without
+    persistence — identical to prior behaviour.
+    """
 
     async def k8s_node(state: InvestigationState) -> dict[str, Any]:
         output = await kubernetes_agent.run(
@@ -129,7 +137,7 @@ def build_graph(deps: AgentDeps) -> Any:
     graph.add_edge("recommendation", "finalize")
     graph.add_edge("finalize", END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
 
 def _agent_to_state_update(agent_name: str, output: AgentOutput) -> dict[str, Any]:

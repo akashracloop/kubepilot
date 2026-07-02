@@ -10,19 +10,18 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from kubepilot_orch.state import InvestigationState
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from kubepilot_api.orchestrator_client import InvestigationOrchestrator
 from kubepilot_api.pubsub import InvestigationBus
 from kubepilot_api.repository import InvestigationRecord, InvestigationRepository
-from kubepilot_orch.state import InvestigationState
-
 
 # ---------------------------------------------------------------------------
 # Request / response shapes
@@ -82,13 +81,15 @@ def make_router(*, auth_dep) -> APIRouter:  # type: ignore[no-untyped-def]
 
     router = APIRouter(prefix="/investigations", dependencies=[Depends(auth_dep)])
 
-    @router.post("", response_model=CreateInvestigationResponse, status_code=status.HTTP_202_ACCEPTED)
+    @router.post(
+        "", response_model=CreateInvestigationResponse, status_code=status.HTTP_202_ACCEPTED
+    )
     async def create(
         body: CreateInvestigationRequest,
         request: Request,
     ) -> CreateInvestigationResponse:
         incident_id = uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         initial_state = InvestigationState(
             incident_id=incident_id,
@@ -143,29 +144,48 @@ def make_router(*, auth_dep) -> APIRouter:  # type: ignore[no-untyped-def]
 
         bus = _bus(request)
 
+        async def _terminal_event(rec: InvestigationRecord) -> dict[str, str]:
+            return {
+                "event": "investigation_completed"
+                if rec.status == "completed"
+                else "investigation_failed",
+                "data": _detail_to_json(_to_detail(rec)),
+            }
+
         async def _events():  # type: ignore[no-untyped-def]
             async with bus.subscribe(incident_id) as queue:
                 # If the investigation has already finished, emit one synthetic
                 # snapshot event and close — clients connecting late get state.
                 fresh = await _repo(request).get(incident_id)
                 if fresh and fresh.status in {"completed", "failed"}:
-                    yield {
-                        "event": "investigation_completed"
-                        if fresh.status == "completed"
-                        else "investigation_failed",
-                        "data": _detail_to_json(_to_detail(fresh)),
-                    }
+                    yield await _terminal_event(fresh)
                     return
 
+                # Poll the queue on a short interval. The interval also bounds how
+                # long we wait before re-checking terminal status directly: even if
+                # the close sentinel is missed (a subscribe-vs-close race), a
+                # finished investigation is detected here rather than wedging the
+                # client open forever. A proxy heartbeat is emitted every
+                # ~HEARTBEAT_SECONDS of genuine idleness.
+                poll_seconds = 1.0
+                heartbeat_seconds = 30.0
+                idle_seconds = 0.0
                 while True:
                     if await request.is_disconnected():
                         return
                     try:
-                        event = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    except asyncio.TimeoutError:
-                        # Heartbeat to keep proxies happy.
-                        yield {"event": "ping", "data": "{}"}
+                        event = await asyncio.wait_for(queue.get(), timeout=poll_seconds)
+                    except TimeoutError:
+                        fresh = await _repo(request).get(incident_id)
+                        if fresh and fresh.status in {"completed", "failed"}:
+                            yield await _terminal_event(fresh)
+                            return
+                        idle_seconds += poll_seconds
+                        if idle_seconds >= heartbeat_seconds:
+                            idle_seconds = 0.0
+                            yield {"event": "ping", "data": "{}"}
                         continue
+                    idle_seconds = 0.0
                     if event is None:
                         return  # sentinel — investigation closed
                     yield event.sse()

@@ -24,6 +24,14 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
 
+      # Helm is required so tests/test_rbac.py actually renders the chart and
+      # asserts the read-only ClusterRole. Without it that test SKIPS silently,
+      # giving a false green on the project's core safety guarantee.
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.17.3"
+
       - name: Install workspace
         run: uv sync --all-packages
 
@@ -33,9 +41,12 @@ jobs:
       - name: Format check (ruff)
         run: uv run ruff format --check .
 
+      # Scoped to src/: strict mypy is clean-ish on product code and this avoids
+      # duplicate-test-module resolution errors. Still non-blocking — full strict
+      # coverage (incl. third-party stubs) is a tracked follow-up, not a W1 gate.
       - name: Type check (mypy)
-        run: uv run mypy services/
-        continue-on-error: true  # strict mypy is aspirational in W1; ratchet up later
+        run: uv run mypy services/*/src
+        continue-on-error: true
 
       - name: Unit tests
         run: uv run pytest -m "not integration and not live_llm" --cov=services --cov-report=term
