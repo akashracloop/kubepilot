@@ -13,6 +13,7 @@ from kubepilot_orch.agents.prompts import load_prompt
 from kubepilot_orch.llm.base import Message, Role
 from kubepilot_orch.llm.parsing import strip_code_fences
 from kubepilot_orch.llm.router import LLMRouter
+from kubepilot_orch.rca.runtimes import runtime_context
 from kubepilot_orch.state import Evidence, InvestigationState, RCAReport, ServiceKnowledge
 
 log = structlog.get_logger(__name__)
@@ -79,6 +80,16 @@ def _build_user_message(state: InvestigationState) -> str:
     else:
         for i, ev in enumerate(state.evidence):
             parts.append(_format_evidence(i, ev))
+
+    runtime, runtime_library = runtime_context(state)
+    if runtime_library:
+        parts.append("")
+        parts.append(
+            f"Runtime-specific reasoning (the Logs agent detected runtime={runtime}). Apply the "
+            "patterns below ONLY where they match the evidence; they sharpen the category and the "
+            "recommendation but must not override contradictory signals:"
+        )
+        parts.append(runtime_library.strip())
 
     if state.knowledge_context:
         parts.append("")
