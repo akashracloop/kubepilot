@@ -1,0 +1,28 @@
+# Grafana-MCP profile — serve metrics + logs + traces from ONE official Grafana
+# MCP server instead of KubePilot's own mcp-prom / mcp-loki / mcp-tempo.
+# See docs/mcp-adapters.md. Layer on top of another profile, e.g.:
+#
+#   helm install kubepilot-ai ./charts/kubepilot-ai \
+#     -f charts/kubepilot-ai/values-prod-small.yaml \
+#     -f charts/kubepilot-ai/values-grafana-mcp.yaml \
+#     --set-string apiGateway.extraEnv.KUBEPILOT_API_MCP__PROM=http://grafana-mcp.observability.svc.cluster.local:8080 \
+#     --set-string apiGateway.extraEnv.KUBEPILOT_API_MCP__LOKI=http://grafana-mcp.observability.svc.cluster.local:8080 \
+#     --set-string apiGateway.extraEnv.KUBEPILOT_API_MCP__TEMPO=http://grafana-mcp.observability.svc.cluster.local:8080
+
+# Stop deploying our reference metrics/logs/traces servers.
+mcp:
+  prom:
+    enabled: false
+  loki:
+    enabled: false
+  tempo:
+    enabled: false
+
+apiGateway:
+  # Repoint the three signal capabilities at the single Grafana MCP server. The
+  # gateway's capability router dedupes by URL, so all three share one client.
+  # Override the host/port for your Grafana MCP install.
+  extraEnv:
+    KUBEPILOT_API_MCP__PROM: "http://grafana-mcp.observability.svc.cluster.local:8080"
+    KUBEPILOT_API_MCP__LOKI: "http://grafana-mcp.observability.svc.cluster.local:8080"
+    KUBEPILOT_API_MCP__TEMPO: "http://grafana-mcp.observability.svc.cluster.local:8080"

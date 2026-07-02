@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install dev-up dev-down smoke-test test test-unit lint typecheck format clean kind-up kind-down eval eval-test
+.PHONY: help install dev-up dev-down smoke-test test test-unit lint typecheck format clean kind-up kind-down minikube-up minikube-down eval eval-test
 
 PYTHON ?= python3
 UV ?= uv
@@ -30,6 +30,12 @@ kind-up: ## Create a local kind cluster with sample workloads (requires kind)
 
 kind-down: ## Tear down the local kind cluster
 	bash scripts/dev-cluster.sh down
+
+minikube-up: ## Full local demo on minikube (OpenAI gpt-4o-mini; needs OPENAI_API_KEY)
+	bash scripts/minikube-up.sh
+
+minikube-down: ## Uninstall the minikube demo (ARGS=--all also deletes the cluster)
+	bash scripts/minikube-down.sh $(ARGS)
 
 test: test-unit ## Run unit tests across all packages
 

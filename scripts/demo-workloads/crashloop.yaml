@@ -1,0 +1,35 @@
+# A container that logs an error and exits non-zero → CrashLoopBackOff.
+# The Logs agent should surface the error line; K8s agent the restart loop.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crash-app
+  namespace: demo
+  labels:
+    app: crash-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crash-app
+  template:
+    metadata:
+      labels:
+        app: crash-app
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - >
+              echo "starting crash-app v1.4.2";
+              sleep 3;
+              echo "FATAL: failed to connect to database db.demo.svc:5432: connection refused" >&2;
+              exit 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi

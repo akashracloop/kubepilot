@@ -43,6 +43,27 @@ export interface Recommendation {
   requires_approval: boolean;
 }
 
+export type TimelineSeverity = "info" | "warning" | "error" | "critical";
+
+export interface TimelineEntry {
+  at: string;
+  label: string;
+  description: string;
+  source: string;
+  severity: TimelineSeverity;
+}
+
+export interface MemoryContextItem {
+  incident_id: string;
+  summary: string;
+  root_cause_category: string | null;
+  namespace: string | null;
+  service: string | null;
+  similarity: number;
+  outcome: string | null;
+  occurred_at: string | null;
+}
+
 export interface InvestigationState {
   current_step?: string;
   completed_agents?: string[];
@@ -50,6 +71,8 @@ export interface InvestigationState {
   evidence?: Evidence[];
   rca?: Rca | null;
   recommendations?: Recommendation[];
+  timeline?: TimelineEntry[];
+  memory_context?: MemoryContextItem[];
   [key: string]: unknown;
 }
 
