@@ -95,11 +95,20 @@ class InvestigationOrchestrator:
             # and enables resume once one is attached.
             config = {"configurable": {"thread_id": str(incident)}}
             final_values: dict[str, Any] | None = None
+            started = datetime.now(UTC)
+            ttfb_logged = False
             async for mode, chunk in self._graph.astream(
                 current_state, stream_mode=["updates", "values"], config=config
             ):
                 if mode == "updates":
                     for node_name in chunk:
+                        if not ttfb_logged:
+                            # AgentOps: time-to-first-byte (trigger → first node output).
+                            ttfb_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
+                            log.info(
+                                "investigation_ttfb", incident_id=str(incident), ttfb_ms=ttfb_ms
+                            )
+                            ttfb_logged = True
                         await self._publish(incident, "node_completed", node=node_name)
                 else:  # "values" — full merged state after the latest node
                     final_values = chunk

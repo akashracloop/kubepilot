@@ -53,6 +53,34 @@ def test_v1_fixture_loads_under_current_schema(fixtures_dir: Path) -> None:
     assert state.evidence[2].severity is Severity.CRITICAL
 
 
+def test_v1_fixture_loads_and_fills_v2_defaults(fixtures_dir: Path) -> None:
+    """A v1 checkpoint must load under v2 code (additive fields default to empty)."""
+    blob = _load_fixture(fixtures_dir, "v1_sample.json")
+    state = load_checkpoint(blob)
+
+    assert state.schema_version == CURRENT_SCHEMA_VERSION  # migrated/stamped to current
+    assert state.memory_context == []  # additive v2 field defaults
+    assert state.timeline == []
+    assert state.total_tokens_used == 0
+
+
+def test_v2_fixture_loads_under_current_schema(fixtures_dir: Path) -> None:
+    """The v2 fixture-replay guarantee: a v2 checkpoint loads with its new fields intact."""
+    blob = _load_fixture(fixtures_dir, "v2_sample.json")
+    state = load_checkpoint(blob)
+
+    assert state.schema_version == 2
+    assert state.rca is not None
+    assert state.rca.root_cause_category == "LatencyRegression"
+    assert len(state.memory_context) == 1
+    assert state.memory_context[0].similarity == pytest.approx(0.91)
+    assert state.memory_context[0].root_cause_category == "LatencyRegression"
+    assert len(state.timeline) == 3
+    assert state.timeline[0].label == "deploy_started"
+    assert state.timeline[1].severity is Severity.ERROR
+    assert state.total_tokens_used == 1800
+
+
 def test_roundtrip_preserves_state(fixtures_dir: Path) -> None:
     blob = _load_fixture(fixtures_dir, "v1_sample.json")
     state = load_checkpoint(blob)

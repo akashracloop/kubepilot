@@ -8,7 +8,7 @@
 
 Each of the three components is 0 or 1, so a per-scenario score is one of
 {0.0, 0.333, 0.667, 1.0}. The aggregate is the mean across scenarios; the
-release gate is aggregate ≥ 0.70.
+release gate is aggregate ≥ 0.80 (raised from 0.70 in Phase 2).
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ class AggregateScore:
     """Aggregate across all graded scenarios."""
 
     breakdowns: list[ScoreBreakdown]
-    baseline_target: float = 0.70
+    baseline_target: float = 0.80
 
     @property
     def count(self) -> int:
@@ -156,6 +156,6 @@ def score_scenario(
     )
 
 
-def aggregate(breakdowns: list[ScoreBreakdown], *, baseline_target: float = 0.70) -> AggregateScore:
+def aggregate(breakdowns: list[ScoreBreakdown], *, baseline_target: float = 0.80) -> AggregateScore:
     """Combine per-scenario breakdowns into an aggregate with the release gate."""
     return AggregateScore(breakdowns=list(breakdowns), baseline_target=baseline_target)

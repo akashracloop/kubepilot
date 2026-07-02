@@ -8,16 +8,19 @@ from typing import Any
 import structlog
 
 from kubepilot_orch.state import InvestigationState
+from kubepilot_orch.timeline import build_timeline
 
 log = structlog.get_logger(__name__)
 
 
 async def finalize_node(state: InvestigationState) -> dict[str, Any]:
     total_tokens = sum(output.tokens_used for output in state.agent_outputs.values())
+    finished_at = datetime.now(UTC)
     update: dict[str, Any] = {
         "current_step": "completed",
-        "finished_at": datetime.now(UTC),
+        "finished_at": finished_at,
         "total_tokens_used": total_tokens,
+        "timeline": build_timeline(state, finished_at=finished_at),
     }
     if state.rca is not None:
         update["confidence"] = state.rca.confidence

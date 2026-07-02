@@ -19,6 +19,7 @@ from kubepilot_orch.state import InvestigationState
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from kubepilot_api.auth import Principal
 from kubepilot_api.orchestrator_client import InvestigationOrchestrator
 from kubepilot_api.pubsub import InvestigationBus
 from kubepilot_api.repository import InvestigationRecord, InvestigationRepository
@@ -76,10 +77,10 @@ def _bus(request: Request) -> InvestigationBus:
     return request.app.state.bus  # type: ignore[no-any-return]
 
 
-def make_router(*, auth_dep) -> APIRouter:  # type: ignore[no-untyped-def]
-    """Build the routes with the configured auth dependency wired in."""
+def make_router(*, principal_dep) -> APIRouter:  # type: ignore[no-untyped-def]
+    """Build the routes with the configured auth/principal dependency wired in."""
 
-    router = APIRouter(prefix="/investigations", dependencies=[Depends(auth_dep)])
+    router = APIRouter(prefix="/investigations")
 
     @router.post(
         "", response_model=CreateInvestigationResponse, status_code=status.HTTP_202_ACCEPTED
@@ -87,7 +88,14 @@ def make_router(*, auth_dep) -> APIRouter:  # type: ignore[no-untyped-def]
     async def create(
         body: CreateInvestigationRequest,
         request: Request,
+        principal: Principal = Depends(principal_dep),
     ) -> CreateInvestigationResponse:
+        if not principal.can_investigate():
+            raise HTTPException(status_code=403, detail="viewer role cannot trigger investigations")
+        if not principal.allows_namespace(body.namespace):
+            raise HTTPException(
+                status_code=403, detail=f"not authorized for namespace {body.namespace!r}"
+            )
         incident_id = uuid4()
         now = datetime.now(UTC)
 
@@ -118,28 +126,36 @@ def make_router(*, auth_dep) -> APIRouter:  # type: ignore[no-untyped-def]
         request: Request,
         limit: int = 50,
         offset: int = 0,
+        principal: Principal = Depends(principal_dep),
     ) -> InvestigationList:
         limit = max(1, min(limit, 500))
         offset = max(0, offset)
         records = await _repo(request).list(limit=limit, offset=offset)
-        return InvestigationList(
-            items=[_to_detail(r) for r in records],
-            limit=limit,
-            offset=offset,
-        )
+        # Namespace scoping: a scoped principal only sees its own namespaces.
+        items = [_to_detail(r) for r in records if principal.allows_namespace(r.namespace)]
+        return InvestigationList(items=items, limit=limit, offset=offset)
 
     @router.get("/{incident_id}", response_model=InvestigationDetail)
-    async def get(incident_id: UUID, request: Request) -> InvestigationDetail:
+    async def get(
+        incident_id: UUID,
+        request: Request,
+        principal: Principal = Depends(principal_dep),
+    ) -> InvestigationDetail:
         record = await _repo(request).get(incident_id)
-        if record is None:
+        # 404 (not 403) when out of scope, so existence isn't leaked across tenants.
+        if record is None or not principal.allows_namespace(record.namespace):
             raise HTTPException(status_code=404, detail=f"Investigation {incident_id} not found")
         return _to_detail(record)
 
     @router.get("/{incident_id}/stream")
-    async def stream(incident_id: UUID, request: Request) -> EventSourceResponse:
-        # First, confirm the investigation exists so we can return 404 cleanly.
+    async def stream(
+        incident_id: UUID,
+        request: Request,
+        principal: Principal = Depends(principal_dep),
+    ) -> EventSourceResponse:
+        # First, confirm the investigation exists (and is in scope) → 404 otherwise.
         record = await _repo(request).get(incident_id)
-        if record is None:
+        if record is None or not principal.allows_namespace(record.namespace):
             raise HTTPException(status_code=404, detail=f"Investigation {incident_id} not found")
 
         bus = _bus(request)

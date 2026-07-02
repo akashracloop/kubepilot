@@ -53,6 +53,14 @@ spec:
               value: "http://mcp-prom.{{ .Release.Namespace }}.svc.cluster.local:8080"
             - name: KUBEPILOT_API_MCP__LOKI
               value: "http://mcp-loki.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            {{- if .Values.mcp.tempo.enabled }}
+            - name: KUBEPILOT_API_MCP__TEMPO
+              value: "http://mcp-tempo.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            {{- end }}
+            {{- if .Values.mcp.ci.enabled }}
+            - name: KUBEPILOT_API_MCP__CI
+              value: "http://mcp-ci.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            {{- end }}
             # ---- Orchestrator settings (in-process, KUBEPILOT_*) ----
             {{- if or .Values.postgres.enabled .Values.postgres.externalUrl }}
             - name: KUBEPILOT_DB__URL
@@ -90,6 +98,12 @@ spec:
                   name: {{ .Values.apiGateway.auth.secretName }}
                   key: api_key
                   optional: true
+            # ---- Operator overrides (last wins) — e.g. repoint MCP__PROM/LOKI/TEMPO
+            #      at a single Grafana MCP server. See docs/mcp-adapters.md.
+            {{- range $k, $v := .Values.apiGateway.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080

@@ -49,6 +49,9 @@ apiGateway:
     # Set `apiKey` to have the chart render the Secret; else create it out of band.
     secretName: kubepilot-api-auth
     apiKey: ""
+  # Extra env vars appended LAST (so they override templated ones). Use to repoint
+  # MCP endpoints at a replacement server, e.g. a Grafana MCP. See docs/mcp-adapters.md.
+  extraEnv: {}
   resources:
     requests:
       cpu: 200m
@@ -73,6 +76,19 @@ webUi:
   apiBaseUrl: ""
 
 # -----------------------------------------------------------------------------
+# Slack bot (Phase 2) — off by default. Socket Mode, so no ingress needed.
+# -----------------------------------------------------------------------------
+slackBot:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: kubepilot-slack
+    tag: 0.1.0-dev
+  defaultNamespace: prod
+  # Secret with keys `bot_token` (xoxb-...) and `app_token` (xapp-..., Socket Mode).
+  tokenSecretRef: kubepilot-slack-tokens
+
+# -----------------------------------------------------------------------------
 # MCP servers
 # -----------------------------------------------------------------------------
 mcp:
@@ -95,6 +111,20 @@ mcp:
     upstream:
       url: http://loki.observability.svc.cluster.local:3100
       bearerTokenSecretRef: ""
+  # Phase 2 — off by default; enable when Tempo / a CI backend is available.
+  # When enabled, the gateway adds the Tracing / Deployment specialist branches.
+  tempo:
+    enabled: false
+    image: { repository: kubepilot-mcp-tempo, tag: 0.1.0-dev }
+    upstream:
+      url: http://tempo.observability.svc.cluster.local:3200
+      bearerTokenSecretRef: "" # optional
+  ci:
+    enabled: false
+    image: { repository: kubepilot-mcp-ci, tag: 0.1.0-dev }
+    backend: github_actions # github_actions | jenkins | argocd
+    url: "" # backend API base URL
+    tokenSecretRef: "" # Secret (key: token) with a read-only CI token
 
 # -----------------------------------------------------------------------------
 # Persistence — bundled single-node Postgres/Redis for dev & prod-small. For

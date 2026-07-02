@@ -21,7 +21,7 @@ import structlog
 from fastapi import FastAPI
 
 from kubepilot_api import __version__
-from kubepilot_api.auth import make_api_key_dep
+from kubepilot_api.auth import make_principal_dep
 from kubepilot_api.config import ApiSettings, load_settings
 from kubepilot_api.orchestrator_client import InvestigationOrchestrator
 from kubepilot_api.pubsub import InvestigationBus
@@ -45,16 +45,58 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
     from kubepilot_orch.config import load_settings as load_orch_settings
     from kubepilot_orch.graph import AgentDeps, build_graph
     from kubepilot_orch.llm.factory import build_router
-    from kubepilot_orch.mcp.client import MCPClient
+    from kubepilot_orch.mcp.adapter import Capability, build_router_from_endpoints
 
     orch_settings = load_orch_settings()
+
+    # Capability-based MCP routing: each domain maps to an endpoint. Endpoints that
+    # share a URL share ONE client, so pointing metrics/logs/tracing at a single
+    # Grafana MCP URL is a config-only swap (see docs/mcp-adapters.md).
+    endpoints: dict[str, str] = {
+        Capability.KUBERNETES: settings.mcp.k8s,
+        Capability.METRICS: settings.mcp.prom,
+        Capability.LOGS: settings.mcp.loki,
+    }
+    if settings.mcp.tempo:
+        endpoints[Capability.TRACING] = settings.mcp.tempo
+    if settings.mcp.ci:
+        endpoints[Capability.DEPLOYMENT] = settings.mcp.ci
+    mcp = build_router_from_endpoints(endpoints)
+
     deps = AgentDeps(
         llm=build_router(orch_settings),
-        mcp_k8s=MCPClient("mcp-k8s", settings.mcp.k8s),
-        mcp_prom=MCPClient("mcp-prom", settings.mcp.prom),
-        mcp_loki=MCPClient("mcp-loki", settings.mcp.loki),
+        mcp_k8s=mcp.client(Capability.KUBERNETES),
+        mcp_prom=mcp.client(Capability.METRICS),
+        mcp_loki=mcp.client(Capability.LOGS),
+        mcp_tempo=mcp.client(Capability.TRACING) if mcp.has(Capability.TRACING) else None,
+        mcp_ci=mcp.client(Capability.DEPLOYMENT) if mcp.has(Capability.DEPLOYMENT) else None,
+        memory=_build_memory(settings, orch_settings) if settings.memory_enabled else None,
     )
     return build_graph(deps, checkpointer=checkpointer)
+
+
+def _build_memory(settings: ApiSettings, orch_settings: Any) -> Any:
+    """Construct the long-term memory retriever (Phase 2)."""
+    from kubepilot_orch.memory import (
+        HashEmbedder,
+        InMemoryMemoryStore,
+        MemoryRetriever,
+        OpenAIEmbedder,
+    )
+    from kubepilot_orch.memory.store import PgVectorMemoryStore
+
+    # BYOK embeddings when an OpenAI key is present; else the offline hash embedder.
+    embedder: Any = (
+        OpenAIEmbedder(orch_settings.llm.openai_api_key)
+        if orch_settings.llm.openai_api_key
+        else HashEmbedder()
+    )
+    store: Any = (
+        PgVectorMemoryStore(settings.db.url, embedder.dim)
+        if settings.storage == "postgres"
+        else InMemoryMemoryStore()
+    )
+    return MemoryRetriever(embedder, store)
 
 
 def _default_repository(settings: ApiSettings) -> InvestigationRepository:
@@ -132,7 +174,7 @@ def build_app(
         app.state.orchestrator = orchestrator
 
     app.include_router(health_router)
-    app.include_router(make_investigations_router(auth_dep=make_api_key_dep(settings)))
+    app.include_router(make_investigations_router(principal_dep=make_principal_dep(settings)))
 
     return app
 
