@@ -85,8 +85,26 @@ def _default_compiled_graph(
         enable_critic=settings.critic_enabled,
         timeline_llm_labels=settings.timeline_llm_labels,
         enable_remediation=settings.remediation_enabled,
+        mcp_write=_build_write_client(settings) if settings.remediation_enabled else None,
+        policy=_build_policy(settings) if settings.remediation_enabled else None,
     )
     return build_graph(deps, checkpointer=checkpointer)
+
+
+def _build_write_client(settings: ApiSettings) -> Any:
+    """Build the mcp-k8s-write client (Phase 4). Only used when remediation is on."""
+    from kubepilot_orch.mcp.client import MCPClient
+
+    return MCPClient(server_name="mcp-k8s-write", base_url=settings.remediation_write_url)
+
+
+def _build_policy(settings: ApiSettings) -> Any:
+    """Load the execution policy — operator override, else the reference set (default-deny)."""
+    from kubepilot_orch.remediation.policy import default_policies, load_policies
+
+    if settings.remediation_policy_path:
+        return load_policies(settings.remediation_policy_path)
+    return default_policies()
 
 
 def _build_memory(settings: ApiSettings, orch_settings: Any) -> Any:

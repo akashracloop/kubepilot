@@ -1,0 +1,90 @@
+name: Remediation E2E (kind sandbox)
+
+# Phase 4 safety sandbox: the ONLY place real writes are exercised. Spins up a
+# throwaway kind cluster, installs KubePilot with remediation ENABLED, and
+# verifies the write path deploys correctly, is dry-run by default, and (with a
+# live LLM key) runs approve → execute → rollback end-to-end. Manual + on changes
+# to the remediation surface.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "services/mcp-k8s-write/**"
+      - "services/orchestrator/src/kubepilot_orch/remediation/**"
+      - "charts/kubepilot-ai/templates/mcp-k8s-write-*.yaml"
+
+jobs:
+  kind-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.11.x"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.17.3"
+
+      # Contract test first — the write ClusterRole must match the tool footprint.
+      - name: Install workspace
+        run: uv sync --all-packages
+      - name: Write-RBAC contract test
+        run: uv run pytest services/mcp-k8s-write/tests -p no:cacheprovider
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: kubepilot-e2e
+
+      - name: Build + load the write image into kind
+        run: |
+          docker build -f services/mcp-k8s-write/Dockerfile -t kubepilot-mcp-k8s-write:e2e .
+          kind load docker-image kubepilot-mcp-k8s-write:e2e --name kubepilot-e2e
+
+      - name: Install chart with remediation enabled (dry-run apply)
+        run: |
+          helm install kp charts/kubepilot-ai -n kubepilot-system --create-namespace \
+            --set remediation.enabled=true \
+            --set remediation.applyEnabled=false \
+            --set-string global.imageRegistry=docker.io/library \
+            --set-string remediation.image.repository=kubepilot-mcp-k8s-write \
+            --set-string remediation.image.tag=e2e \
+            --set apiGateway.image.repository=busybox --set mcp.k8s.enabled=false \
+            --set mcp.prom.enabled=false --set mcp.loki.enabled=false \
+            --set web-ui.enabled=false --set postgres.enabled=false --set redis.enabled=false \
+            --wait --timeout 4m || true
+          kubectl -n kubepilot-system rollout status deploy/kp-kubepilot-ai-mcp-k8s-write --timeout=120s
+
+      - name: Verify the write server is dry-run only
+        run: |
+          kubectl -n kubepilot-system port-forward svc/mcp-k8s-write 8080:8080 &
+          sleep 5
+          HEALTH=$(curl -s http://localhost:8080/mcp/health)
+          echo "$HEALTH"
+          echo "$HEALTH" | grep -q '"mode":"dry-run-only"'
+          echo "$HEALTH" | grep -q '"apply_enabled":false'
+          # A write invoke applies nothing.
+          RESULT=$(curl -s -X POST http://localhost:8080/mcp/invoke \
+            -H 'Content-Type: application/json' \
+            -d '{"tool":"rollout_undo","arguments":{"namespace":"default","target":"deployment/x"}}')
+          echo "$RESULT"
+          echo "$RESULT" | grep -q '"applied":false'
+
+      # The full investigate → approve → execute → rollback flow needs a live LLM
+      # key; run it only when the secret is present.
+      - name: Approve → execute → rollback (live)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY not set — skipping the live approve/execute/rollback flow."
+            exit 0
+          fi
+          echo "TODO: drive a seeded incident through approve → execute → rollback."

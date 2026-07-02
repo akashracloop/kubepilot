@@ -104,9 +104,14 @@ class ApiSettings(BaseSettings):
 
     # Phase 4 remediation (WRITES). When true, the graph proposes an executable
     # remediation plan and interrupts before executing it (HITL approval). OFF by
-    # default — the entire write path is opt-in. Real execution also needs the
-    # mcp-k8s-write endpoint + a policy file (wired in later Phase 4 work).
+    # default — the entire write path is opt-in.
     remediation_enabled: bool = False
+    # In-cluster endpoint of the mcp-k8s-write server (only present when
+    # remediation is enabled).
+    remediation_write_url: str = "http://mcp-k8s-write:8080"
+    # Optional path to an operator-provided execution-policy YAML (a mounted
+    # ConfigMap). None → the shipped reference policy set (still default-deny).
+    remediation_policy_path: str | None = None
 
 
 def load_settings() -> ApiSettings:

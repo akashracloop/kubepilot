@@ -154,6 +154,23 @@ mcp:
     credentialsSecretRef: ""
 
 # -----------------------------------------------------------------------------
+# Phase 4 remediation (WRITES). OFF by default. When enabled, deploys the
+# mcp-k8s-write server with its OWN least-privilege ClusterRole + a restrictive
+# NetworkPolicy, plus the execution-policy ConfigMap, and turns on the gateway's
+# HITL approval gate. Even then, writes are DRY-RUN until applyEnabled=true.
+# The read/write bright line — do not enable without reviewing the policies.
+# -----------------------------------------------------------------------------
+remediation:
+  enabled: false
+  image: { repository: kubepilot-mcp-k8s-write, tag: 0.1.0-dev }
+  # Master switch for real cluster mutation. false → the write server dry-runs
+  # everything even when remediation is enabled.
+  applyEnabled: false
+  # Override the shipped reference policies with your own (a YAML string keyed as
+  # policies.yaml in the ConfigMap). Empty → the reference set is used.
+  policiesYaml: ""
+
+# -----------------------------------------------------------------------------
 # Persistence — bundled single-node Postgres/Redis for dev & prod-small. For
 # production, set enabled=false and point externalUrl at a managed instance.
 # -----------------------------------------------------------------------------
@@ -187,9 +204,3 @@ agentOps:
   langsmith:
     enabled: false # opt-in BYOK
     apiKeySecretRef: ""
-
-# -----------------------------------------------------------------------------
-# Remediation — DEFAULT-OFF until Phase 4
-# -----------------------------------------------------------------------------
-remediation:
-  enabled: false

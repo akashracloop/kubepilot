@@ -1,0 +1,18 @@
+{{- if and .Values.remediation.enabled .Values.remediation.policiesYaml }}
+{{- /*
+  Operator-provided execution policies (default-deny engine). Only rendered when
+  remediation.policiesYaml is set; otherwise the gateway falls back to the shipped
+  reference policy set. Mounted at /etc/kubepilot/remediation/policies.yaml.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubepilot.fullname" . }}-remediation-policies
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: remediation
+data:
+  policies.yaml: |
+    {{- .Values.remediation.policiesYaml | nindent 4 }}
+{{- end }}
