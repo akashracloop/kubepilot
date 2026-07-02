@@ -36,12 +36,3 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | 
 {{- end -}}
 {{- end -}}
 
-{{/* Name of the Secret holding LLM credentials (existing or rendered). */}}
-{{- define "kubepilot.llm.secretName" -}}
-{{- if .Values.llm.existingSecret -}}{{ .Values.llm.existingSecret }}{{- else -}}{{ include "kubepilot.fullname" . }}-llm-credentials{{- end -}}
-{{- end -}}
-
-{{/* Name of the Secret holding the API gateway auth key (existing or rendered). */}}
-{{- define "kubepilot.apiAuth.secretName" -}}
-{{- if .Values.apiGateway.auth.existingSecret -}}{{ .Values.apiGateway.auth.existingSecret }}{{- else -}}{{ include "kubepilot.fullname" . }}-api-auth{{- end -}}
-{{- end -}}

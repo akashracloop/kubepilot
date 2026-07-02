@@ -19,10 +19,11 @@ llm:
   vllm:
     baseUrl: http://vllm.kubepilot-system.svc.cluster.local:8000/v1
 
-  # Credentials. In production prefer `existingSecret` (a Secret you create out
-  # of band). For dev, inline values below render a Secret named
-  # <fullname>-llm-credentials. Keys map to orchestrator env (KUBEPILOT_LLM__*).
-  existingSecret: "" # name of a pre-created Secret; takes precedence when set
+  # Credentials Secret. The gateway reads these keys (all optional) from it:
+  #   anthropic_api_key, openai_api_key, azure_api_key, azure_endpoint, bedrock_region
+  # In prod, create the Secret out of band with those keys. For dev, put values
+  # under `credentials` below and the chart renders the Secret for you.
+  secretName: kubepilot-llm-credentials
   credentials: {} # e.g. { anthropic_api_key: "sk-ant-...", openai_api_key: "" }
 
 # -----------------------------------------------------------------------------
@@ -43,10 +44,11 @@ apiGateway:
   # LangGraph checkpointer backend: "postgres" (resumable) or "memory" (dev).
   checkpointer: postgres
   auth:
-    # If apiKey is set, a Secret <fullname>-api-auth is rendered and the gateway
-    # enforces X-API-Key. Prefer existingSecret in prod (key: API_KEY).
+    # Static X-API-Key auth. The gateway reads key `api_key` from `secretName`
+    # (optional — if the Secret/key is absent, auth is DISABLED; dev only).
+    # Set `apiKey` to have the chart render the Secret; else create it out of band.
+    secretName: kubepilot-api-auth
     apiKey: ""
-    existingSecret: ""
   resources:
     requests:
       cpu: 200m

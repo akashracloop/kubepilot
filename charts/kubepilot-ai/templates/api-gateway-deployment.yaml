@@ -74,15 +74,22 @@ spec:
             - name: KUBEPILOT_OTEL_EXPORTER_ENDPOINT
               value: "http://{{ include "kubepilot.fullname" . }}-phoenix.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.agentOps.phoenix.service.port }}"
             {{- end }}
-          envFrom:
-            {{- if or .Values.llm.existingSecret (gt (len (keys .Values.llm.credentials)) 0) }}
-            - secretRef:
-                name: {{ include "kubepilot.llm.secretName" . }}
+            # ---- LLM credentials (all optional — absent keys leave the env unset) ----
+            {{- range $envKey, $secretKey := dict "KUBEPILOT_LLM__ANTHROPIC_API_KEY" "anthropic_api_key" "KUBEPILOT_LLM__OPENAI_API_KEY" "openai_api_key" "KUBEPILOT_LLM__AZURE_API_KEY" "azure_api_key" "KUBEPILOT_LLM__AZURE_ENDPOINT" "azure_endpoint" "KUBEPILOT_LLM__BEDROCK_REGION" "bedrock_region" }}
+            - name: {{ $envKey }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.llm.secretName }}
+                  key: {{ $secretKey }}
+                  optional: true
             {{- end }}
-            {{- if or .Values.apiGateway.auth.existingSecret .Values.apiGateway.auth.apiKey }}
-            - secretRef:
-                name: {{ include "kubepilot.apiAuth.secretName" . }}
-            {{- end }}
+            # ---- API auth key (optional — if unset, the gateway runs open; dev only) ----
+            - name: KUBEPILOT_API_AUTH__API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.apiGateway.auth.secretName }}
+                  key: api_key
+                  optional: true
           ports:
             - name: http
               containerPort: 8080

@@ -5,15 +5,17 @@
 #     --set-string apiGateway.auth.apiKey=$(openssl rand -hex 24)
 #
 # For real production, prefer a managed Postgres (postgres.enabled=false +
-# postgres.externalUrl) and an out-of-band Secret (llm.existingSecret,
-# apiGateway.auth.existingSecret).
+# postgres.externalUrl) and out-of-band Secrets you create yourself:
+#   kubepilot-llm-credentials (keys: anthropic_api_key, ...)
+#   kubepilot-api-auth        (key:  api_key)
 
 apiGateway:
   replicaCount: 1
   storage: postgres
   checkpointer: postgres
   auth:
-    apiKey: "" # REQUIRED: set via --set-string or auth.existingSecret
+    # Set here via --set-string, or create the kubepilot-api-auth Secret yourself.
+    apiKey: ""
 
 postgres:
   enabled: true
@@ -33,5 +35,6 @@ webUi:
 
 llm:
   defaultProvider: anthropic
-  existingSecret: "" # prefer a pre-created Secret in prod
+  # In prod, create the kubepilot-llm-credentials Secret out of band rather than
+  # inlining keys here.
   credentials: {}

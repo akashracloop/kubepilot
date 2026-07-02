@@ -28,9 +28,10 @@ Components:
    open http://localhost:{{ .Values.webUi.service.port }}
 {{- end }}
 
-{{ if not (or .Values.apiGateway.auth.apiKey .Values.apiGateway.auth.existingSecret) -}}
-WARNING: no API auth key configured — the gateway is OPEN (dev only). Set
-apiGateway.auth.apiKey or apiGateway.auth.existingSecret for a protected install.
+{{ if not .Values.apiGateway.auth.apiKey -}}
+NOTE: apiGateway.auth.apiKey is not set. If you did not create the Secret
+"{{ .Values.apiGateway.auth.secretName }}" (key: api_key) out of band, the gateway runs
+OPEN (dev only). Set apiGateway.auth.apiKey or create that Secret to enforce X-API-Key.
 {{- else -}}
 3. Trigger an investigation (X-API-Key required):
 
@@ -39,7 +40,8 @@ apiGateway.auth.apiKey or apiGateway.auth.existingSecret for a protected install
      -d '{"query":"why is payment-service failing?","namespace":"prod","service":"payment-service"}'
 {{- end }}
 
-{{ if not (or .Values.llm.existingSecret (gt (len (keys .Values.llm.credentials)) 0)) -}}
-NOTE: no LLM credentials configured. Cloud providers need llm.credentials or
-llm.existingSecret; air-gapped installs use Ollama/vLLM (no key required).
+{{ if not (gt (len (keys .Values.llm.credentials)) 0) -}}
+NOTE: no inline LLM credentials. Cloud providers need Secret "{{ .Values.llm.secretName }}"
+(keys: anthropic_api_key / openai_api_key / ...) created out of band, or set
+llm.credentials. Air-gapped installs use Ollama/vLLM (no key required).
 {{- end }}
