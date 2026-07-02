@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/akashracloop/kubepilot/security/advisories/new
+    about: Please report security issues privately — do NOT open a public issue. See SECURITY.md.
+  - name: Documentation
+    url: https://github.com/akashracloop/kubepilot/tree/main/docs
+    about: Browse the docs before filing — start at docs/README.md.
