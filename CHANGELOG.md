@@ -26,6 +26,16 @@ Phase 3** — no code path writes to the cluster (writes are Phase 4).
 - `scripts/inject-failures.sh` (demo failure injector) and a `helm-publish.yml`
   workflow (OCI chart publish on tags).
 
+### Fixed — surfaced by an end-to-end minikube run
+- **Graph deadlock with memory + knowledge both enabled**: the two pre-RCA nodes
+  ran in parallel and both wrote the singleton `current_step`, so LangGraph raised
+  `InvalidUpdateError` and every investigation failed. They now run as a serial
+  chain (memory → knowledge → rca).
+- **Missing `critique` LLM role**: the Helm `llm.roles` config omitted the Phase 3
+  critique role, crashing the critic. The router now falls back to the analysis
+  binding for any unconfigured role, and `critique` is added to all values
+  profiles.
+
 ## [0.3.0] — Phase 3: enterprise-grade (not yet tagged)
 
 ### Added
@@ -68,4 +78,4 @@ Phase 3** — no code path writes to the cluster (writes are Phase 4).
 - Golden **RCA eval harness**; AgentOps (OTel + token ledger); **Web UI**; one
   umbrella **Helm chart** with dev / prod-small / prod-air-gapped profiles.
 
-[Unreleased]: https://github.com/kubepilot-ai/kubepilot-ai/compare/main...HEAD
+[Unreleased]: https://github.com/akashracloop/kubepilot/commits/main

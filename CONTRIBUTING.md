@@ -8,8 +8,8 @@ By contributing you agree your work is licensed under [Apache 2.0](LICENSE).
 
 ## 1. Ground rules
 
-- **Read the context first.** [IDEA.md](IDEA.md) (product), [docs/ARCHITECTURE.md](docs/reference/architecture.md) (engineering), [docs/PHASE_1_PLAN.md](docs/reference/phase-1-plan.md) (the current milestone).
-- **Respect the locked product decisions.** Read-only in Phase 1, self-hosted via Helm, Grafana LGTM only, BYOK multi-provider + local models, workload-agnostic. PRs that violate these will be asked to change.
+- **Read the context first.** [IDEA.md](IDEA.md) (product), [docs/reference/architecture.md](docs/reference/architecture.md) (engineering), and the [phase plans](docs/reference/) + [roadmap](docs/reference/roadmap.md) (Phases 1–3 are implemented; Phase 4 is writes).
+- **Respect the locked product decisions.** Read-only **through Phase 3**, self-hosted via Helm, Grafana LGTM + a pluggable observability adapter, BYOK multi-provider + local models, workload-agnostic. PRs that violate these will be asked to change.
 - **Be kind.** See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ---
@@ -72,7 +72,7 @@ make test-integration   # real Postgres/Redis
 uv run pytest -m slow    # opt into slow tests
 ```
 
-Coverage target: **70% line coverage** on `orchestrator` and the MCP servers (UI manual testing acceptable in Phase 1). New behavior needs a test. Bug fixes should add a regression test.
+Coverage target: **70% line coverage** on `orchestrator` and the MCP servers (Web UI is manually tested). New behavior needs a test; bug fixes should add a regression test. The eval harness (`eval/`) has its own deterministic self-tests (`make eval-test`) plus a live golden run (`make eval`).
 
 ---
 
@@ -120,16 +120,14 @@ Sign-off is **optional but appreciated**. Add it with `git commit -s` (appends a
 
 ## 7. Phase discipline
 
-**Do not pull Phase 2+ work forward.** Scope creep is the single biggest risk to this project ([PHASE_1_PLAN.md §10](docs/reference/phase-1-plan.md), [§12](docs/reference/phase-1-plan.md)). Concretely, the following are **out of scope until later phases** and PRs adding them will be deferred to issues:
+**Phases 1–3 are implemented and read-only.** The single hardest rule is the **read/write bright line**: KubePilot writes nothing to the cluster until Phase 4. RBAC grants only `get/list/watch`, `mcp-k8s` exposes only read tools (`mcp-k8s/tests/test_rbac.py` renders the chart and asserts no write verbs), and a guardrail blocks any destructive recommendation. The following are **out of scope until Phase 4** and PRs adding them will be deferred to issues:
 
-- **Any** cluster writes / remediation execution (Phase 4 — read-only is architectural, not optional)
-- Tracing agent + Tempo MCP, Deployment agent + CI MCP (Phase 2)
-- Long-term memory / pgvector RAG over past incidents (Phase 2)
-- Slack bot, CLI (Phase 2)
-- Datadog / New Relic / ELK / Splunk integrations — Grafana LGTM only in Phase 1
-- Multi-cluster, SaaS control plane, OIDC/Keycloak auth (later phases)
+- **Any** cluster writes / remediation execution / auto-rollback / self-healing (Phase 4 — read-only is architectural, not optional).
+- The `k8s-write-mcp` server, HITL approval flow, execution policy engine, blast-radius estimation (Phase 4).
 
-Have a great idea for a future phase? **Open an issue** so it's captured — don't smuggle it into a Phase 1 PR. Check [docs/ROADMAP.md](docs/reference/roadmap.md) for where things land.
+Still deferred (open an issue to discuss): full **OIDC/Keycloak** auth (a documented opt-in seam today), multi-cluster federation, and a SaaS control plane.
+
+Have a great idea for Phase 4+? **Open an issue** so it's captured — don't smuggle a write path into a read-only PR. See the [roadmap](docs/reference/roadmap.md) for where things land.
 
 ---
 
