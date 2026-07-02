@@ -6,7 +6,7 @@ agents can reason about with less ceremony.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -83,5 +83,8 @@ def _samples_from_values(values: list[list[Any]]) -> list[Sample]:
             v = float(raw_val)
         except (TypeError, ValueError):
             continue  # skip non-numeric samples
-        out.append(Sample(timestamp=datetime.fromtimestamp(float(ts)), value=v))
+        # Prometheus sample timestamps are Unix epoch seconds in UTC. Build a
+        # tz-aware datetime so downstream range charts / correlations stay
+        # consistent with the tz-aware datetimes used elsewhere (targets/alerts).
+        out.append(Sample(timestamp=datetime.fromtimestamp(float(ts), tz=UTC), value=v))
     return out

@@ -268,7 +268,9 @@ def _expected_recommendations_payload() -> str:
     return recs.model_dump_json()
 
 
-def _build_dispatcher() -> tuple[ScriptedLLM, ScriptedLLM, ScriptedLLM, ScriptedLLM, ScriptedLLM, object]:
+def _build_dispatcher() -> tuple[
+    ScriptedLLM, ScriptedLLM, ScriptedLLM, ScriptedLLM, ScriptedLLM, object
+]:
     k8s = ScriptedLLM(
         name="k8s",
         responses=[

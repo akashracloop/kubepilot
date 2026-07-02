@@ -77,8 +77,15 @@ class LLMProvider(Protocol):
 
         Implementations MUST:
         - return ``LLMResponse.content == ""`` when only tool calls are produced
-        - validate ``response_schema`` on the way out when provided
         - populate ``input_tokens`` and ``output_tokens`` for cost accounting
+
+        Implementations MUST NOT raise on structured-output mismatch. When
+        ``response_schema`` is provided it is a *hint* the caller wants JSON back;
+        the provider returns the model's raw text unchanged. The **caller** owns
+        validation against the schema and the graceful fallback when the model
+        emits something unparseable (see ``agents/_runner.py``, ``rca_agent.py``,
+        ``recommendation_agent.py``). Validating here would raise inside ``chat``
+        and make those caller-side fallbacks unreachable.
         """
         ...
 

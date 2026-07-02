@@ -90,10 +90,9 @@ def _to_response(
             )
         )
 
-    if schema and content:
-        # validate structured output
-        parsed = schema.model_validate_json(content)
-        content = parsed.model_dump_json()
+    # NOTE: structured-output validation is intentionally NOT done here — the
+    # caller validates against ``schema`` and owns the fallback (see base.py).
+    _ = schema
 
     usage = getattr(raw, "usage_metadata", None) or {}
     return LLMResponse(

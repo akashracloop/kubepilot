@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -45,7 +45,7 @@ class InvestigationRecord:
         service: str | None,
         state: InvestigationState,
     ) -> InvestigationRecord:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return cls(
             incident_id=incident_id,
             status=PENDING,
@@ -64,7 +64,9 @@ class InvestigationRepository(Protocol):
     async def create(self, record: InvestigationRecord) -> None: ...
     async def get(self, incident_id: UUID) -> InvestigationRecord | None: ...
     async def list(self, *, limit: int = 50, offset: int = 0) -> list[InvestigationRecord]: ...
-    async def update_status(self, incident_id: UUID, status: str, *, error: str | None = None) -> None: ...
+    async def update_status(
+        self, incident_id: UUID, status: str, *, error: str | None = None
+    ) -> None: ...
     async def update_state(self, incident_id: UUID, state: InvestigationState) -> None: ...
     async def aclose(self) -> None: ...
 
@@ -95,7 +97,7 @@ class InMemoryInvestigationRepository(InvestigationRepository):
         if record is None:
             return
         record.status = status
-        record.updated_at = datetime.now(timezone.utc)
+        record.updated_at = datetime.now(UTC)
         if error is not None:
             record.error = error
 
@@ -104,7 +106,7 @@ class InMemoryInvestigationRepository(InvestigationRepository):
         if record is None:
             return
         record.state_json = state.model_dump(mode="json")
-        record.updated_at = datetime.now(timezone.utc)
+        record.updated_at = datetime.now(UTC)
 
     async def aclose(self) -> None:
         # Nothing to close.
@@ -201,7 +203,7 @@ class PostgresInvestigationRepository(InvestigationRepository):
                 incident_id,
                 status,
                 error,
-                datetime.now(timezone.utc),
+                datetime.now(UTC),
             )
 
     async def update_state(self, incident_id: UUID, state: InvestigationState) -> None:
@@ -215,7 +217,7 @@ class PostgresInvestigationRepository(InvestigationRepository):
                 """,
                 incident_id,
                 json.dumps(state.model_dump(mode="json")),
-                datetime.now(timezone.utc),
+                datetime.now(UTC),
             )
 
     async def aclose(self) -> None:

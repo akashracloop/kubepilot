@@ -21,9 +21,7 @@ async def search_errors(
     """
     selector_parts = [f'namespace="{namespace}"']
     if service:
-        # Match either `app="<svc>"` or `service="<svc>"` — both common conventions.
-        selector_parts.append(f'app=~"{service}|.*"')
-
+        selector_parts.append(f'app="{service}"')
     selector = "{" + ",".join(selector_parts) + "}"
 
     # Conservative severity filter — case-insensitive, matches common shapes.
@@ -34,10 +32,6 @@ async def search_errors(
     )
 
     logql = f"{selector} |~ `{severity_regex}`"
-    # If a service was provided, additionally constrain by an app label match.
-    if service:
-        logql = "{" + f'namespace="{namespace}",app="{service}"' + "} |~ `" + severity_regex + "`"
-
     return await query_logs(logql=logql, window_minutes=window_minutes, limit=limit)
 
 

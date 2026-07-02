@@ -10,11 +10,12 @@ node completion.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 import structlog
+from kubepilot_orch.state import InvestigationState
 
 from kubepilot_api.events import InvestigationEvent
 from kubepilot_api.pubsub import InvestigationBus
@@ -24,7 +25,6 @@ from kubepilot_api.repository import (
     RUNNING,
     InvestigationRepository,
 )
-from kubepilot_orch.state import InvestigationState
 
 log = structlog.get_logger(__name__)
 
@@ -53,8 +53,12 @@ class InvestigationOrchestrator:
         self._tasks[state.incident_id] = task
         task.add_done_callback(lambda t, k=state.incident_id: self._tasks.pop(k, None))
 
-    async def wait_for(self, incident_id: UUID, timeout: float | None = None) -> None:
-        """Wait for an in-flight investigation (used by tests)."""
+    async def wait_for(self, incident_id: UUID, timeout: float | None = None) -> None:  # noqa: ASYNC109
+        """Wait for an in-flight investigation (used by tests).
+
+        ``timeout`` is forwarded verbatim to ``asyncio.wait_for``; ASYNC109 is a
+        false positive here since we are not implementing our own timeout logic.
+        """
         task = self._tasks.get(incident_id)
         if task is not None:
             await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
@@ -70,33 +74,39 @@ class InvestigationOrchestrator:
     async def _run(self, state: InvestigationState) -> None:
         incident = state.incident_id
         await self._repo.update_status(incident, RUNNING)
-        await self._publish(incident, "investigation_started", node=None, payload={
-            "query": state.query, "namespace": state.namespace, "service": state.service,
-        })
+        await self._publish(
+            incident,
+            "investigation_started",
+            node=None,
+            payload={
+                "query": state.query,
+                "namespace": state.namespace,
+                "service": state.service,
+            },
+        )
 
         try:
             current_state: dict[str, Any] = state.model_dump(mode="python")
-            async for chunk in self._graph.astream(current_state):
-                # chunk is {node_name: state_update}
-                for node_name, _update in chunk.items():
-                    await self._publish(incident, "node_completed", node=node_name)
-                    # Persist a fresh snapshot after each node.
-                    # LangGraph doesn't give us the merged state on astream by default,
-                    # so we get the final state via aget_state or just re-invoke at the end.
-                    # For P1 we rely on the final ainvoke result below for the canonical snapshot.
+            # Single pass over the graph. ``stream_mode=["updates", "values"]`` yields
+            # ("updates", {node: delta}) after each node — used for SSE progress — AND
+            # ("values", full_state) — the post-merge canonical snapshot. Keeping the
+            # last "values" chunk gives us the final state without a second, LLM-costly
+            # ``ainvoke`` pass. The ``thread_id`` config is inert without a checkpointer
+            # and enables resume once one is attached.
+            config = {"configurable": {"thread_id": str(incident)}}
+            final_values: dict[str, Any] | None = None
+            async for mode, chunk in self._graph.astream(
+                current_state, stream_mode=["updates", "values"], config=config
+            ):
+                if mode == "updates":
+                    for node_name in chunk:
+                        await self._publish(incident, "node_completed", node=node_name)
+                else:  # "values" — full merged state after the latest node
+                    final_values = chunk
 
-            # After the graph finishes, fetch the canonical merged state by invoking once more
-            # — astream doesn't yield the post-merge state in 0.2.x, so we use ainvoke for the
-            # final snapshot. The graph is deterministic given fixed inputs; in P1 with mocked
-            # LLMs in tests this is fine, in prod it'll re-call the LLM (small cost).
-            #
-            # In W9 we'll switch to ``graph.aget_state(thread_id=incident)`` once we wire up
-            # a checkpointer thread per investigation. For now astream + best-effort works.
-            #
-            # NOTE: when running in prod with real LLMs, prefer ainvoke directly and skip the
-            # streaming altogether; W9 adds proper graph-level checkpointing for both.
-            final_state_raw = await self._graph.ainvoke(state.model_dump(mode="python"))
-            final_state = InvestigationState.model_validate(final_state_raw)
+            if final_values is None:
+                raise RuntimeError("graph produced no state; cannot finalize investigation")
+            final_state = InvestigationState.model_validate(final_values)
 
             await self._repo.update_state(incident, final_state)
             await self._repo.update_status(incident, COMPLETED)
@@ -112,10 +122,12 @@ class InvestigationOrchestrator:
                     "recommendation_count": len(final_state.recommendations),
                 },
             )
-        except Exception as e:  # noqa: BLE001 — top-level task; we MUST not let it die silently
+        except Exception as e:
             log.exception("investigation_failed", incident_id=str(incident))
             await self._repo.update_status(incident, FAILED, error=str(e))
-            await self._publish(incident, "investigation_failed", node=None, payload={"error": str(e)})
+            await self._publish(
+                incident, "investigation_failed", node=None, payload={"error": str(e)}
+            )
         finally:
             await self._bus.close(incident)
 
@@ -131,7 +143,7 @@ class InvestigationOrchestrator:
             InvestigationEvent(
                 type=event_type,  # type: ignore[arg-type]
                 incident_id=str(incident_id),
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 node=node,
                 payload=payload or {},
             )

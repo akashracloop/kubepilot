@@ -61,9 +61,9 @@ class OllamaProvider(LLMProvider):
                 )
             )
 
-        if response_schema and content:
-            parsed = response_schema.model_validate_json(content)
-            content = parsed.model_dump_json()
+        # Structured-output validation is the caller's responsibility (see base.py);
+        # validating here would make the caller-side fallbacks unreachable.
+        _ = response_schema
 
         usage = getattr(raw, "usage_metadata", None) or {}
         return LLMResponse(
