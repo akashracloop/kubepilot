@@ -8,6 +8,13 @@ const STATUS_TONE: Record<string, Tone> = {
   pending_approval: "amber",
   completed: "green",
   failed: "red",
+  // remediation outcomes
+  approved: "green",
+  partial: "blue",
+  rejected: "red",
+  expired: "neutral",
+  closed: "green",
+  reopened: "amber",
 };
 
 const STATUS_LABEL: Record<string, string> = {

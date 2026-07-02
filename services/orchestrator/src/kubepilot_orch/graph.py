@@ -273,10 +273,10 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
             return {"current_step": "remediation_skipped", "completed_agents": ["remediation_exec"]}
         status = approval.plan_status(plan, state.approvals, generated_at=plan.generated_at)
 
-        # Only an approved plan with an executor + policy wired in actually runs.
-        # Anything else (rejected/expired/pending, or no executor) resolves the
-        # outcome without any write.
-        if status != "approved" or deps.mcp_write is None or deps.policy is None:
+        # An approved (or partially-approved) plan with an executor + policy wired
+        # in runs its approved-action subset. Anything else (rejected/expired/
+        # pending, or no executor) resolves the outcome without any write.
+        if status not in ("approved", "partial") or deps.mcp_write is None or deps.policy is None:
             return {
                 "remediation_outcome": status,
                 "current_step": "remediation_resolved",

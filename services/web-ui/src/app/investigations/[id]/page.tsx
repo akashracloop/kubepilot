@@ -51,11 +51,26 @@ export default function InvestigationDetailPage() {
   const [detail, setDetail] = useState<InvestigationDetail | null>(null);
   const [progress, setProgress] = useState<ProgressLine[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Phase 4 approval: decisions are staged locally per action, then submitted
+  // together (approved subset runs, rejected are skipped).
+  const [decisions, setDecisions] = useState<Record<number, "approve" | "reject">>({});
+  const [submitting, setSubmitting] = useState(false);
   const seq = useRef(0);
+  const seen = useRef<Set<string>>(new Set());
 
-  function pushProgress(label: string, done = true) {
+  function pushProgress(label: string) {
+    if (seen.current.has(label)) return; // dedupe seeded vs streamed
+    seen.current.add(label);
     seq.current += 1;
-    setProgress((prev) => [...prev, { key: `${Date.now()}-${seq.current}`, label, done }]);
+    setProgress((prev) => [...prev, { key: `${Date.now()}-${seq.current}`, label, done: true }]);
+  }
+
+  // Reconstruct the progress that already happened from persisted state, so a
+  // refresh mid-investigation doesn't lose the earlier steps (bug: progress
+  // vanished on reload, showing only new events).
+  function seedProgress(s: Record<string, unknown> | undefined) {
+    const done = (s?.completed_agents as string[] | undefined) ?? [];
+    for (const agent of done) pushProgress(`${agent} completed`);
   }
 
   useEffect(() => {
@@ -66,7 +81,10 @@ export default function InvestigationDetailPage() {
     async function finalize() {
       try {
         const full = await getInvestigation(id);
-        if (!cancelled) setDetail(full);
+        if (!cancelled) {
+          setDetail(full);
+          seedProgress(full.state as Record<string, unknown>);
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
@@ -109,6 +127,7 @@ export default function InvestigationDetailPage() {
         const snap = await getInvestigation(id);
         if (cancelled) return;
         setDetail(snap);
+        seedProgress(snap.state as Record<string, unknown>);
         if (TERMINAL.has(snap.status)) return;
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -142,16 +161,36 @@ export default function InvestigationDetailPage() {
   const knowledgeContext = state.knowledge_context ?? [];
   const remediationPlan = state.remediation_plan ?? null;
   const remediationOutcome = state.remediation_outcome ?? null;
+  const isPendingApproval =
+    detail?.status === "pending_approval" ||
+    (remediationOutcome ?? "pending_approval") === "pending_approval";
   const isCompleted = detail?.status === "completed";
   const isTerminal = detail ? TERMINAL.has(detail.status) : false;
 
-  async function decide(decision: "approve" | "reject", index: number) {
-    if (!id) return;
+  function stage(index: number, decision: "approve" | "reject") {
+    setDecisions((d) => ({ ...d, [index]: decision }));
+  }
+
+  const actionCount = remediationPlan?.actions.length ?? 0;
+  const allDecided = actionCount > 0 && Object.keys(decisions).length >= actionCount;
+  const approvedCount = Object.values(decisions).filter((d) => d === "approve").length;
+  const rejectedCount = Object.values(decisions).filter((d) => d === "reject").length;
+
+  async function submitDecisions() {
+    if (!id || !allDecided) return;
+    setSubmitting(true);
+    setError(null);
     try {
-      await decideRemediation(id, decision, index);
+      // Submit sequentially so the final decision is the one that flips the plan
+      // to a terminal status and resumes the graph.
+      for (let i = 0; i < actionCount; i++) {
+        await decideRemediation(id, decisions[i], i);
+      }
       setDetail(await getInvestigation(id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "approval failed");
+      setError(e instanceof Error ? e.message : "submitting decisions failed");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -325,45 +364,85 @@ export default function InvestigationDetailPage() {
             </CardHeader>
             <CardBody className="space-y-3">
               <p className="text-[13px] text-ink-muted">
-                These actions require explicit approval before KubePilot executes them. Nothing
-                runs until approved.
+                Choose per action, then submit. The approved actions run; rejected ones are
+                skipped. Nothing runs until you invoke remediation.
               </p>
-              {remediationPlan.actions.map((a, i) => (
-                <div key={i} className="rounded-lg border border-line bg-canvas/40 px-3.5 py-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-[13px] font-medium text-ink">{a.tool}</span>
-                    <Icon.ChevronRight size={13} className="text-ink-subtle" />
-                    <span className="font-mono text-[13px] text-ink-muted">{a.target}</span>
-                    <Badge tone={a.reversibility === "reversible" ? "green" : "amber"}>
-                      {a.reversibility}
-                    </Badge>
-                    <Badge tone="neutral">approve: {a.approval_tier}</Badge>
-                  </div>
-                  {a.rationale && (
-                    <p className="mt-1.5 text-[13px] text-ink-muted">{a.rationale}</p>
-                  )}
-                  {a.estimated_blast_radius && (
-                    <p className="mt-1.5 text-xs text-ink-subtle">
-                      blast radius: ~{a.estimated_blast_radius.pods_affected ?? "?"} pod(s), ~
-                      {a.estimated_blast_radius.traffic_percent ?? "?"}% traffic
-                      {a.estimated_blast_radius.dependents &&
-                      a.estimated_blast_radius.dependents.length > 0
-                        ? ` · dependents: ${a.estimated_blast_radius.dependents.join(", ")}`
-                        : ""}
-                    </p>
-                  )}
-                  {remediationOutcome === "pending_approval" && (
-                    <div className="mt-2.5 flex gap-2">
-                      <Button size="sm" variant="success" onClick={() => decide("approve", i)}>
-                        <Icon.Check size={13} /> Approve
-                      </Button>
-                      <Button size="sm" variant="danger" onClick={() => decide("reject", i)}>
-                        <Icon.X size={13} /> Reject
-                      </Button>
+              {remediationPlan.actions.map((a, i) => {
+                const staged = decisions[i];
+                return (
+                  <div key={i} className="rounded-lg border border-line bg-canvas/40 px-3.5 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[13px] font-medium text-ink">{a.tool}</span>
+                      <Icon.ChevronRight size={13} className="text-ink-subtle" />
+                      <span className="font-mono text-[13px] text-ink-muted">{a.target}</span>
+                      <Badge tone={a.reversibility === "reversible" ? "green" : "amber"}>
+                        {a.reversibility}
+                      </Badge>
+                      <Badge tone="neutral">approve: {a.approval_tier}</Badge>
+                      {staged === "approve" && <Badge tone="green">will approve</Badge>}
+                      {staged === "reject" && <Badge tone="red">will reject</Badge>}
                     </div>
-                  )}
+                    {a.rationale && (
+                      <p className="mt-1.5 text-[13px] text-ink-muted">{a.rationale}</p>
+                    )}
+                    {a.estimated_blast_radius && (
+                      <p className="mt-1.5 text-xs text-ink-subtle">
+                        blast radius: ~{a.estimated_blast_radius.pods_affected ?? "?"} pod(s), ~
+                        {a.estimated_blast_radius.traffic_percent ?? "?"}% traffic
+                        {a.estimated_blast_radius.dependents &&
+                        a.estimated_blast_radius.dependents.length > 0
+                          ? ` · dependents: ${a.estimated_blast_radius.dependents.join(", ")}`
+                          : ""}
+                      </p>
+                    )}
+                    {isPendingApproval && (
+                      <div className="mt-2.5 flex gap-2">
+                        <Button
+                          size="sm"
+                          variant={staged === "approve" ? "success" : "subtle"}
+                          disabled={submitting}
+                          onClick={() => stage(i, "approve")}
+                        >
+                          <Icon.Check size={13} /> Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={staged === "reject" ? "danger" : "subtle"}
+                          disabled={submitting}
+                          onClick={() => stage(i, "reject")}
+                        >
+                          <Icon.X size={13} /> Reject
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {isPendingApproval && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft pt-3">
+                  <span className="text-[13px] text-ink-muted">
+                    {Object.keys(decisions).length}/{actionCount} decided
+                    {Object.keys(decisions).length > 0 && (
+                      <span className="text-ink-subtle">
+                        {" "}
+                        · {approvedCount} approve · {rejectedCount} reject
+                      </span>
+                    )}
+                  </span>
+                  <Button onClick={submitDecisions} disabled={!allDecided || submitting}>
+                    {submitting ? (
+                      <>
+                        <Spinner /> Invoking…
+                      </>
+                    ) : (
+                      <>
+                        <Icon.Shield size={14} /> Invoke remediation
+                      </>
+                    )}
+                  </Button>
                 </div>
-              ))}
+              )}
             </CardBody>
           </Card>
         )}

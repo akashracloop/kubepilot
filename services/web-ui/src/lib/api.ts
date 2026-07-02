@@ -13,7 +13,12 @@ export const API_BASE_URL = (
 
 export const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
-export type InvestigationStatus = "pending" | "running" | "completed" | "failed";
+export type InvestigationStatus =
+  | "pending"
+  | "running"
+  | "pending_approval"
+  | "completed"
+  | "failed";
 
 export interface Evidence {
   source_agent: string;
