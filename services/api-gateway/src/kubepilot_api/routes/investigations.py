@@ -19,6 +19,7 @@ from kubepilot_orch.state import InvestigationState
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from kubepilot_api.audit import emit_audit
 from kubepilot_api.auth import Principal
 from kubepilot_api.orchestrator_client import InvestigationOrchestrator
 from kubepilot_api.pubsub import InvestigationBus
@@ -91,8 +92,24 @@ def make_router(*, principal_dep) -> APIRouter:  # type: ignore[no-untyped-def]
         principal: Principal = Depends(principal_dep),
     ) -> CreateInvestigationResponse:
         if not principal.can_investigate():
+            emit_audit(
+                actor_role=principal.role,
+                action="create_investigation",
+                resource="investigation",
+                namespace=body.namespace,
+                decision="denied",
+                reason="insufficient_role",
+            )
             raise HTTPException(status_code=403, detail="viewer role cannot trigger investigations")
         if not principal.allows_namespace(body.namespace):
+            emit_audit(
+                actor_role=principal.role,
+                action="create_investigation",
+                resource="investigation",
+                namespace=body.namespace,
+                decision="denied",
+                reason="namespace_out_of_scope",
+            )
             raise HTTPException(
                 status_code=403, detail=f"not authorized for namespace {body.namespace!r}"
             )
@@ -117,6 +134,13 @@ def make_router(*, principal_dep) -> APIRouter:  # type: ignore[no-untyped-def]
         await _repo(request).create(record)
         _orchestrator(request).start_investigation(initial_state)
 
+        emit_audit(
+            actor_role=principal.role,
+            action="create_investigation",
+            resource=f"investigation/{incident_id}",
+            namespace=body.namespace,
+            decision="allowed",
+        )
         return CreateInvestigationResponse(
             incident_id=incident_id, status=record.status, created_at=now
         )
@@ -144,7 +168,22 @@ def make_router(*, principal_dep) -> APIRouter:  # type: ignore[no-untyped-def]
         record = await _repo(request).get(incident_id)
         # 404 (not 403) when out of scope, so existence isn't leaked across tenants.
         if record is None or not principal.allows_namespace(record.namespace):
+            emit_audit(
+                actor_role=principal.role,
+                action="get_investigation",
+                resource=f"investigation/{incident_id}",
+                namespace=record.namespace if record else None,
+                decision="denied",
+                reason="not_found_or_out_of_scope",
+            )
             raise HTTPException(status_code=404, detail=f"Investigation {incident_id} not found")
+        emit_audit(
+            actor_role=principal.role,
+            action="get_investigation",
+            resource=f"investigation/{incident_id}",
+            namespace=record.namespace,
+            decision="allowed",
+        )
         return _to_detail(record)
 
     @router.get("/{incident_id}/stream")

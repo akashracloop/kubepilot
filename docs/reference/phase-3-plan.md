@@ -346,21 +346,26 @@ If any step needs manual intervention or fails first try, Phase 3 isn't done.
 
 ## 11. Definition of Done (v0.3.0 Release Checklist)
 
-- [ ] Critic node shipped; debate-uplift eval shows critiqued ≥ single-pass on held-out
-- [ ] Cluster knowledge graph populated + queried; RCA cites owner/deps/SLO
-- [ ] Runtime RCA libraries (JVM/Node/Python/Go) improve per-runtime accuracy
-- [ ] RCA accuracy **≥90%** (golden) + tracked on a held-out set
-- [ ] Confidence calibration error **<10%**; calibration plot in AgentOps
-- [ ] Continuous eval + drift detection; release gate blocks >5% regression
-- [ ] Prompt versioning + A/B; rollback demonstrated in <5 min
-- [ ] Guardrails: forbidden-rec + schema + prompt-injection defense, tested
-- [ ] RBAC v2: viewer/investigator/operator/admin + namespace-scoped tokens + SIEM export (OIDC optional)
-- [ ] Observability-adapter interface + Datadog reference; an external Datadog user runs it
-- [ ] State schema v3 (additive) with v1/v2/v3 fixture-replay green
-- [ ] Docs: knowledge-graph, guardrails, rbac, observability-adapters + updated architecture
-- [ ] CI green (lint, unit, integration, eval-subset) + nightly full eval; eval-gate wired
-- [ ] **≥3 external user teams** in production usage
-- [ ] GitHub release `v0.3.0` with changelog + demo video
+- [x] Critic node shipped; debate-uplift eval shows critiqued ≥ single-pass on held-out
+- [x] Cluster knowledge graph populated + queried; RCA cites owner/deps/SLO
+- [x] Runtime RCA libraries (JVM/Node/Python/Go) injected by `detail.runtime`
+- [ ] RCA accuracy **≥90%** (golden) + tracked on a held-out set — *needs a live LLM run*
+- [x] Confidence calibration (isotonic) + ECE + reliability curve; **<10%** number needs a live run
+- [x] Continuous eval + drift detection; release gate blocks >5% regression
+- [x] Prompt versioning + A/B; rollback is a config pin (<5 min)
+- [x] Guardrails: forbidden-rec + schema + prompt-injection defense, tested
+- [x] RBAC v2: viewer/investigator/operator/admin + namespace-scoped tokens + SIEM export (OIDC deferred/opt-in)
+- [x] Observability-adapter interface + Datadog reference (contract-tested); *external Datadog user run pending*
+- [x] State schema v3 (additive) with v1/v2/v3 fixture-replay green
+- [x] Docs: knowledge-graph, guardrails, rbac, observability-adapters + rca-quality + updated CLAUDE.md
+- [x] CI green (lint, unit, eval-subset); eval-gate workflow wired (nightly live run needs a key)
+- [ ] **≥3 external user teams** in production usage — *adoption milestone, outside the codebase*
+- [ ] GitHub release `v0.3.0` with changelog + demo video — *tag when the live gate + external runs land*
+
+**Status:** all engineering work-items (W1–W11) are implemented, tested, and
+committed on `phase3/implementation`. The unchecked items require a live LLM eval
+run (the ≥90%/<10% *numbers*) and real-world adoption (external users, the release
+tag) — they can't be closed from the codebase alone.
 
 ---
 

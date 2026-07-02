@@ -74,7 +74,7 @@ def build_router(
             provider=(role_to_provider or {}).get(role, primary),
             model="scripted-model",
         )
-        for role in (Role.ROUTING, Role.ANALYSIS, Role.SUMMARIZATION)
+        for role in (Role.ROUTING, Role.ANALYSIS, Role.SUMMARIZATION, Role.CRITIQUE)
     }
     return LLMRouter(providers=provider_map, role_bindings=bindings)  # type: ignore[arg-type]
 

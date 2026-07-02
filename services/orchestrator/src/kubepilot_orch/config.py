@@ -30,6 +30,9 @@ class LLMSettings(BaseModel):
             Role.SUMMARIZATION: LLMRoleBinding(
                 provider="anthropic", model="claude-haiku-4-5-20251001"
             ),
+            # Phase 3 critic: an independent refutation of the RCA needs a strong
+            # reasoner, so it defaults to the same analysis-tier model as RCA.
+            Role.CRITIQUE: LLMRoleBinding(provider="anthropic", model="claude-sonnet-4-6"),
         }
     )
 

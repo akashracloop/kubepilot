@@ -25,6 +25,11 @@ Start here. Docs are grouped by what you're trying to do.
 | [features/tracing-and-ci.md](./features/tracing-and-ci.md) | Tracing (Tempo) + Deployment (CI) specialists and their MCP servers. |
 | [features/slack.md](./features/slack.md) | The Slack bot: `@kubepilot why is X failing?`. |
 | [features/cli.md](./features/cli.md) | The `kubepilot` CLI for terminal / CI workflows. |
+| [features/rca-quality.md](./features/rca-quality.md) | **Phase 3:** multi-agent critique, runtime RCA libraries, confidence calibration, prompt A/B + rollback, drift + release gate. |
+| [features/knowledge-graph.md](./features/knowledge-graph.md) | **Phase 3:** cluster knowledge graph (services ↔ owners ↔ deps ↔ SLOs) feeding the RCA. |
+| [features/guardrails.md](./features/guardrails.md) | **Phase 3:** prompt-injection sanitization + forbidden-recommendation policy. |
+| [features/rbac.md](./features/rbac.md) | **Phase 3:** RBAC v2 (viewer/investigator/operator/admin) + namespace scoping + SIEM audit export. |
+| [features/observability-adapters.md](./features/observability-adapters.md) | **Phase 3:** the observability-adapter interface + the Datadog reference MCP server. |
 
 ## 📐 Reference & planning
 

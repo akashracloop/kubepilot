@@ -16,6 +16,7 @@ members = [
     "services/mcp-loki",
     "services/mcp-tempo",
     "services/mcp-ci",
+    "services/mcp-datadog",
     "services/slack-bot",
     "services/cli",
 ]
@@ -62,6 +63,8 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]
 # The pgvector store interpolates only a trusted, internally-set table name into
 # SQL (never user input); parameters are always bound. S608 is a false positive.
 "**/memory/store.py" = ["S608"]
+# Same rationale for the knowledge-graph Postgres store (trusted table name only).
+"**/knowledge/graph.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.12"

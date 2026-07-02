@@ -23,7 +23,9 @@ class MCPEndpoints(BaseModel):
 class KeyPolicy(BaseModel):
     """What an API key is allowed to do (light multi-tenancy, Phase 2)."""
 
-    role: str = "investigator"  # "viewer" (read-only) | "investigator" (can trigger)
+    # RBAC v2 roles (ascending privilege): viewer < investigator < operator < admin.
+    # operator/admin see every namespace; viewer/investigator are namespace-scoped.
+    role: str = "investigator"
     namespaces: list[str] = Field(default_factory=list)  # empty = all namespaces
 
 
@@ -70,6 +72,26 @@ class ApiSettings(BaseSettings):
     # retrieved before RCA and concluded incidents are indexed. Uses a pgvector
     # store when storage=postgres, else an in-process store (dev, non-persistent).
     memory_enabled: bool = True
+
+    # Phase 3 critic: an adversarial review between RCA and recommendation that
+    # produces an agreement score, a critic-adjusted confidence, and an
+    # escalate-to-human flag. On by default for Phase 3.
+    critic_enabled: bool = True
+
+    # Phase 3 cluster knowledge graph: a pre-RCA node that injects owner/dependency/
+    # SLO context. Off by default until the graph is populated by ingestion; an empty
+    # graph would just add a no-op node.
+    knowledge_enabled: bool = False
+
+    # Phase 3 confidence calibrator: path to a JSON file holding a trained isotonic
+    # calibrator (IsotonicCalibrator.to_dict()). When set + readable, finalize maps
+    # the raw RCA confidence to an empirically-calibrated value. None → no calibration.
+    calibrator_path: str | None = None
+
+    # Phase 3 prompt versioning: pin a prompt to a specific version, e.g.
+    # {"rca_agent": "v2"}. This is the rollback lever — set it (env/values) and
+    # restart to roll a prompt back in <5 min. Empty → each prompt serves its latest.
+    prompt_active_versions: dict[str, str] = Field(default_factory=dict)
 
 
 def load_settings() -> ApiSettings:

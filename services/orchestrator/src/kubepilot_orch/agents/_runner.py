@@ -22,6 +22,7 @@ from typing import Any
 import structlog
 from pydantic import ValidationError
 
+from kubepilot_orch.guardrails import sanitize
 from kubepilot_orch.llm.base import Message, Role, ToolSchema
 from kubepilot_orch.llm.parsing import strip_code_fences
 from kubepilot_orch.llm.router import LLMRouter
@@ -108,12 +109,22 @@ async def run_agent(spec: AgentSpec) -> AgentOutput:
             tool_calls_made += 1
             try:
                 result = await spec.mcp.invoke(tc.name, tc.arguments)
+                # Guardrail: scrub prompt-injection out of untrusted tool output
+                # before it re-enters the model's context.
+                scrubbed = sanitize.scrub(_truncate_tool_result(result, spec.max_tool_result_chars))
+                if scrubbed.modified:
+                    log.warning(
+                        "prompt_injection_scrubbed",
+                        agent=spec.name,
+                        tool=tc.name,
+                        patterns=scrubbed.findings,
+                    )
                 messages.append(
                     Message(
                         role="tool",
                         tool_call_id=tc.id,
                         name=tc.name,
-                        content=_truncate_tool_result(result, spec.max_tool_result_chars),
+                        content=scrubbed.text,
                     )
                 )
             except MCPError as e:

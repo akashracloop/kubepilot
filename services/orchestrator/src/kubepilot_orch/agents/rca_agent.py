@@ -9,15 +9,17 @@ from __future__ import annotations
 import structlog
 from pydantic import ValidationError
 
-from kubepilot_orch.agents.prompts import load_prompt
+from kubepilot_orch.agents.prompt_registry import resolve_prompt
 from kubepilot_orch.llm.base import Message, Role
 from kubepilot_orch.llm.parsing import strip_code_fences
 from kubepilot_orch.llm.router import LLMRouter
-from kubepilot_orch.state import Evidence, InvestigationState, RCAReport
+from kubepilot_orch.rca.runtimes import runtime_context
+from kubepilot_orch.state import Evidence, InvestigationState, RCAReport, ServiceKnowledge
 
 log = structlog.get_logger(__name__)
 
 AGENT_NAME = "rca"
+PROMPT_NAME = "rca_agent"
 
 
 async def run(state: InvestigationState, *, llm: LLMRouter) -> RCAReport:
@@ -27,11 +29,12 @@ async def run(state: InvestigationState, *, llm: LLMRouter) -> RCAReport:
     "Unknown" report if the model produces unparseable output.
     """
     user_msg = _build_user_message(state)
+    _, system_prompt = resolve_prompt(PROMPT_NAME, key=str(state.incident_id))
 
     resp = await llm.chat(
         role=Role.ANALYSIS,
         messages=[
-            Message(role="system", content=load_prompt("rca_agent")),
+            Message(role="system", content=system_prompt),
             Message(role="user", content=user_msg),
         ],
         response_schema=RCAReport,
@@ -80,6 +83,26 @@ def _build_user_message(state: InvestigationState) -> str:
         for i, ev in enumerate(state.evidence):
             parts.append(_format_evidence(i, ev))
 
+    runtime, runtime_library = runtime_context(state)
+    if runtime_library:
+        parts.append("")
+        parts.append(
+            f"Runtime-specific reasoning (the Logs agent detected runtime={runtime}). Apply the "
+            "patterns below ONLY where they match the evidence; they sharpen the category and the "
+            "recommendation but must not override contradictory signals:"
+        )
+        parts.append(runtime_library.strip())
+
+    if state.knowledge_context:
+        parts.append("")
+        parts.append(
+            "Cluster knowledge (from the service graph — corroborating context, NOT evidence; "
+            "do not cite in evidence_refs). Use it to name the owning team, weigh a dependency "
+            "as a suspect, and check SLO breaches:"
+        )
+        for fact in state.knowledge_context:
+            parts.append(_format_knowledge(fact))
+
     if state.memory_context:
         parts.append("")
         parts.append(
@@ -96,6 +119,22 @@ def _build_user_message(state: InvestigationState) -> str:
     parts.append("")
     parts.append("Produce the structured RCAReport now.")
     return "\n".join(parts)
+
+
+def _format_knowledge(fact: ServiceKnowledge) -> str:
+    bits = [f"  - {fact.service}"]
+    if fact.owner:
+        bits.append(f"owned by {fact.owner}")
+    if fact.dependencies:
+        bits.append(f"depends on {', '.join(fact.dependencies)}")
+    if fact.dependents:
+        bits.append(f"depended on by {', '.join(fact.dependents)}")
+    if fact.slos:
+        slos = ", ".join(f"{k}={v}" for k, v in fact.slos.items())
+        bits.append(f"SLOs: {slos}")
+    if fact.last_deploy:
+        bits.append(f"last deploy {fact.last_deploy}")
+    return "; ".join(bits)
 
 
 def _format_evidence(idx: int, ev: Evidence) -> str:

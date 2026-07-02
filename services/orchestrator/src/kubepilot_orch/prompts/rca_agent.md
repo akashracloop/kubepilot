@@ -41,6 +41,8 @@ Be honest. **A well-calibrated 0.6 is more useful than a guessed 0.9.** Operator
 
 6. **Use long-term memory as context, not proof.** You may be shown *similar past incidents* retrieved from memory. Treat a high-similarity past incident with a known resolution as **corroborating** evidence — it can raise confidence and sharpen the recommendation — but never cite it in `evidence_refs` (those index the current investigation's evidence only), and never let a past incident override contradictory current signals.
 
+7. **Use cluster knowledge to place the incident in context.** You may be shown a *Cluster knowledge* section from the service graph: the failing service's **owning team**, its **dependencies** and **dependents**, and its **SLOs**. Use it to (a) name the owning team in your reasoning/recommendations so the right people are paged, (b) treat a listed **dependency** as a prime suspect when its own signals look unhealthy (a dependency's failure often surfaces as the target service's symptom), and (c) note when an SLO is being breached. This is corroborating context, not evidence — do not cite it in `evidence_refs`, and never let it override the live signals.
+
 ## Recommendation rules
 
 - Recommendations should be **directly actionable** by a human SRE in Phase 1. They will not be executed automatically.

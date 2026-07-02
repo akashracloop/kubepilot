@@ -43,12 +43,18 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
     Imported lazily so tests can build the app without the langchain dependencies
     when they pass in their own ``compiled_graph``.
     """
+    from kubepilot_orch.agents.prompt_registry import default_registry
     from kubepilot_orch.config import load_settings as load_orch_settings
     from kubepilot_orch.graph import AgentDeps, build_graph
     from kubepilot_orch.llm.factory import build_router
     from kubepilot_orch.mcp.adapter import Capability, build_router_from_endpoints
 
     orch_settings = load_orch_settings()
+
+    # Apply prompt-version pins (the rollback lever) to the shared registry that the
+    # reasoning agents resolve against. Config-only + restart → rollback in <5 min.
+    if settings.prompt_active_versions:
+        default_registry().active.update(settings.prompt_active_versions)
 
     # Capability-based MCP routing: each domain maps to an endpoint. Endpoints that
     # share a URL share ONE client, so pointing metrics/logs/tracing at a single
@@ -72,6 +78,9 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
         mcp_tempo=mcp.client(Capability.TRACING) if mcp.has(Capability.TRACING) else None,
         mcp_ci=mcp.client(Capability.DEPLOYMENT) if mcp.has(Capability.DEPLOYMENT) else None,
         memory=_build_memory(settings, orch_settings) if settings.memory_enabled else None,
+        knowledge=_build_knowledge(settings) if settings.knowledge_enabled else None,
+        calibrator=_build_calibrator(settings),
+        enable_critic=settings.critic_enabled,
     )
     return build_graph(deps, checkpointer=checkpointer)
 
@@ -98,6 +107,44 @@ def _build_memory(settings: ApiSettings, orch_settings: Any) -> Any:
         else InMemoryMemoryStore()
     )
     return MemoryRetriever(embedder, store)
+
+
+def _build_knowledge(settings: ApiSettings) -> Any:
+    """Construct the cluster knowledge-graph retriever (Phase 3).
+
+    The store persists the service graph (owners/deps/SLOs); a separate ingestion
+    path (labels / ownership map / ServiceMonitors / dependency discovery) populates
+    it. An empty graph simply yields empty knowledge_context — the RCA degrades to
+    its Phase-2 behaviour.
+    """
+    from kubepilot_orch.knowledge import (
+        InMemoryKnowledgeStore,
+        KnowledgeRetriever,
+        PgKnowledgeStore,
+    )
+
+    store: Any = (
+        PgKnowledgeStore(settings.db.url)
+        if settings.storage == "postgres"
+        else InMemoryKnowledgeStore()
+    )
+    return KnowledgeRetriever(store)
+
+
+def _build_calibrator(settings: ApiSettings) -> Any:
+    """Load a trained isotonic calibrator from disk, or None if unset/absent (Phase 3)."""
+    import json
+    from pathlib import Path
+
+    from kubepilot_orch.calibration import IsotonicCalibrator
+
+    if not settings.calibrator_path:
+        return None
+    path = Path(settings.calibrator_path)
+    if not path.exists():
+        log.warning("calibrator_missing", path=str(path))
+        return None
+    return IsotonicCalibrator.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
 def _default_repository(settings: ApiSettings) -> InvestigationRepository:

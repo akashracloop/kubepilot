@@ -36,8 +36,10 @@ import structlog
 from langgraph.graph import END, START, StateGraph
 
 from kubepilot_orch.agents import (
+    critic_agent,
     deployment_agent,
     finalize,
+    knowledge_agent,
     kubernetes_agent,
     logs_agent,
     memory_agent,
@@ -47,6 +49,9 @@ from kubepilot_orch.agents import (
     supervisor,
     tracing_agent,
 )
+from kubepilot_orch.agents.prompt_registry import resolve_prompt
+from kubepilot_orch.calibration import IsotonicCalibrator
+from kubepilot_orch.knowledge.retriever import KnowledgeRetriever
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.mcp.client import MCPClient
 from kubepilot_orch.memory.retriever import MemoryRetriever
@@ -73,6 +78,19 @@ class AgentDeps:
     # Phase 2 long-term memory. When present, a retrieval node runs before RCA and
     # the concluded incident is indexed at finalize.
     memory: MemoryRetriever | None = None
+    # Phase 3 cluster knowledge graph. When present, a knowledge node runs before
+    # RCA (beside memory) and injects owner/dependency/SLO context into
+    # state.knowledge_context.
+    knowledge: KnowledgeRetriever | None = None
+    # Phase 3 confidence calibrator (fit from eval history). When present + fitted,
+    # finalize maps the raw RCA confidence to an empirically-calibrated value,
+    # overriding the critic's interim calibrated_confidence.
+    calibrator: IsotonicCalibrator | None = None
+    # Phase 3 critic. When True, a critic node runs between RCA and recommendation,
+    # producing an independent agreement score, a critic-adjusted confidence, and an
+    # escalate-to-human flag. Off by default so the minimal graph is unchanged; the
+    # api-gateway turns it on via config.
+    enable_critic: bool = False
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -147,12 +165,34 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         incidents = await memory_agent.run(state, retriever=deps.memory)
         return memory_agent.to_state_update(incidents)
 
+    async def knowledge_node(state: InvestigationState) -> dict[str, Any]:
+        assert deps.knowledge is not None  # node only added when present
+        facts = await knowledge_agent.run(state, retriever=deps.knowledge)
+        return knowledge_agent.to_state_update(facts)
+
     async def rca_node(state: InvestigationState) -> dict[str, Any]:
         report = await rca_agent.run(state, llm=deps.llm)
-        return rca_agent.to_state_update(report)
+        update = rca_agent.to_state_update(report)
+        update["prompt_versions"] = _prompt_version(
+            rca_agent.AGENT_NAME, rca_agent.PROMPT_NAME, state
+        )
+        return update
+
+    async def critic_node(state: InvestigationState) -> dict[str, Any]:
+        critique = await critic_agent.run(state, llm=deps.llm)
+        update = critic_agent.to_state_update(critique)
+        update["prompt_versions"] = _prompt_version(
+            critic_agent.AGENT_NAME, critic_agent.PROMPT_NAME, state
+        )
+        return update
 
     async def finalize_node(state: InvestigationState) -> dict[str, Any]:
         update = await finalize.finalize_node(state)
+        # Empirically calibrate the raw RCA confidence when a fitted calibrator is
+        # wired in. This is the authoritative calibrated_confidence — it overrides
+        # the critic's interim value (W2), which only tempered by evidence gaps.
+        if deps.calibrator is not None and deps.calibrator.is_fitted and state.rca is not None:
+            update["calibrated_confidence"] = deps.calibrator.calibrate(state.rca.confidence)
         if deps.memory is not None:
             # Index the concluded incident so future investigations can recall it.
             await memory_agent.index_incident(state, retriever=deps.memory)
@@ -160,7 +200,11 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
 
     async def recommendation_node(state: InvestigationState) -> dict[str, Any]:
         recs = await recommendation_agent.run(state, llm=deps.llm)
-        return recommendation_agent.to_state_update(recs)
+        update = recommendation_agent.to_state_update(recs)
+        update["prompt_versions"] = _prompt_version(
+            recommendation_agent.AGENT_NAME, recommendation_agent.PROMPT_NAME, state
+        )
+        return update
 
     graph = StateGraph(InvestigationState)
 
@@ -183,21 +227,39 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         graph.add_node("deployment", deployment_node)
         specialists.append("deployment")
 
-    # Phase 2 memory: a retrieval node between the specialist fan-in and RCA, so
-    # the RCA agent sees similar past incidents. Without memory, specialists → rca.
-    fan_in = "rca"
+    # Pre-RCA context collectors run between the specialist fan-in and RCA, each
+    # feeding a slice of corroborating context into state before RCA reasons:
+    #   - Phase 2 memory     → similar past incidents (state.memory_context)
+    #   - Phase 3 knowledge  → cluster graph: owner/deps/SLOs (state.knowledge_context)
+    # They run in parallel; RCA fans in after all of them. With none present the
+    # specialists feed RCA directly (the Phase 1 shape, byte-for-byte unchanged).
+    pre_rca: list[str] = []
     if deps.memory is not None:
         graph.add_node("memory", memory_node)
-        graph.add_edge("memory", "rca")
-        fan_in = "memory"
+        pre_rca.append("memory")
+    if deps.knowledge is not None:
+        graph.add_node("knowledge", knowledge_node)
+        pre_rca.append("knowledge")
 
-    # START → supervisor → fan out to all specialists → fan in.
+    # START → supervisor → fan out to all specialists → (collectors) → rca.
     graph.add_edge(START, "supervisor")
+    collectors = pre_rca or ["rca"]
     for name in specialists:
         graph.add_edge("supervisor", name)
-        graph.add_edge(name, fan_in)
-    # rca → recommendation → finalize → END
-    graph.add_edge("rca", "recommendation")
+        for collector in collectors:
+            graph.add_edge(name, collector)
+    for collector in pre_rca:
+        graph.add_edge(collector, "rca")
+
+    # Phase 3 critic: an adversarial review between RCA and recommendation. When
+    # enabled, rca → critic → recommendation; otherwise rca → recommendation.
+    if deps.enable_critic:
+        graph.add_node("critic", critic_node)
+        graph.add_edge("rca", "critic")
+        graph.add_edge("critic", "recommendation")
+    else:
+        graph.add_edge("rca", "recommendation")
+    # recommendation → finalize → END
     graph.add_edge("recommendation", "finalize")
     graph.add_edge("finalize", END)
 
@@ -205,9 +267,22 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         "graph_built",
         specialists=specialists,
         memory=deps.memory is not None,
+        knowledge=deps.knowledge is not None,
+        critic=deps.enable_critic,
         checkpointer=checkpointer is not None,
     )
     return graph.compile(checkpointer=checkpointer)
+
+
+def _prompt_version(agent_name: str, prompt_name: str, state: InvestigationState) -> dict[str, str]:
+    """Record which prompt version an agent used, keyed by incident id for A/B.
+
+    Re-resolves the same deterministic version the agent used (``resolve_prompt``
+    is a pure function of name + key), so ``state.prompt_versions`` traces exactly
+    which arm produced this investigation.
+    """
+    version, _ = resolve_prompt(prompt_name, key=str(state.incident_id))
+    return {agent_name: version}
 
 
 def _agent_to_state_update(agent_name: str, output: AgentOutput) -> dict[str, Any]:
