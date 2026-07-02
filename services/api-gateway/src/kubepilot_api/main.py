@@ -53,6 +53,9 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
         mcp_k8s=MCPClient("mcp-k8s", settings.mcp.k8s),
         mcp_prom=MCPClient("mcp-prom", settings.mcp.prom),
         mcp_loki=MCPClient("mcp-loki", settings.mcp.loki),
+        # Phase 2 specialists — only wired when their MCP endpoint is configured.
+        mcp_tempo=MCPClient("mcp-tempo", settings.mcp.tempo) if settings.mcp.tempo else None,
+        mcp_ci=MCPClient("mcp-ci", settings.mcp.ci) if settings.mcp.ci else None,
     )
     return build_graph(deps, checkpointer=checkpointer)
 

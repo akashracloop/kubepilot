@@ -14,6 +14,10 @@ class MCPEndpoints(BaseModel):
     k8s: str = "http://localhost:8081"
     prom: str = "http://localhost:8082"
     loki: str = "http://localhost:8083"
+    # Phase 2, optional: empty string means the server isn't deployed, so the
+    # Tracing / Deployment specialist branches are omitted from the graph.
+    tempo: str = ""
+    ci: str = ""
 
 
 class AuthSettings(BaseModel):

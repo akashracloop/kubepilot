@@ -36,6 +36,7 @@ import structlog
 from langgraph.graph import END, START, StateGraph
 
 from kubepilot_orch.agents import (
+    deployment_agent,
     finalize,
     kubernetes_agent,
     logs_agent,
@@ -43,6 +44,7 @@ from kubepilot_orch.agents import (
     rca_agent,
     recommendation_agent,
     supervisor,
+    tracing_agent,
 )
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.mcp.client import MCPClient
@@ -53,12 +55,19 @@ log = structlog.get_logger(__name__)
 
 @dataclass
 class AgentDeps:
-    """Runtime dependencies injected into agent nodes via closure."""
+    """Runtime dependencies injected into agent nodes via closure.
+
+    ``mcp_tempo`` / ``mcp_ci`` are Phase 2 and optional: when present, the
+    Tracing / Deployment specialist branches are added to the graph; when None
+    (Tempo / CI not deployed), the graph is the Phase 1 three-specialist shape.
+    """
 
     llm: LLMRouter
     mcp_k8s: MCPClient
     mcp_prom: MCPClient
     mcp_loki: MCPClient
+    mcp_tempo: MCPClient | None = None
+    mcp_ci: MCPClient | None = None
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -104,6 +113,30 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         )
         return _agent_to_state_update(logs_agent.AGENT_NAME, output)
 
+    async def tracing_node(state: InvestigationState) -> dict[str, Any]:
+        assert deps.mcp_tempo is not None  # node only added when present
+        output = await tracing_agent.run(
+            query=state.query,
+            namespace=state.namespace,
+            service=state.service,
+            time_window_minutes=state.time_window_minutes,
+            llm=deps.llm,
+            mcp_tempo=deps.mcp_tempo,
+        )
+        return _agent_to_state_update(tracing_agent.AGENT_NAME, output)
+
+    async def deployment_node(state: InvestigationState) -> dict[str, Any]:
+        assert deps.mcp_ci is not None  # node only added when present
+        output = await deployment_agent.run(
+            query=state.query,
+            namespace=state.namespace,
+            service=state.service,
+            time_window_minutes=state.time_window_minutes,
+            llm=deps.llm,
+            mcp_ci=deps.mcp_ci,
+        )
+        return _agent_to_state_update(deployment_agent.AGENT_NAME, output)
+
     async def rca_node(state: InvestigationState) -> dict[str, Any]:
         report = await rca_agent.run(state, llm=deps.llm)
         return rca_agent.to_state_update(report)
@@ -122,21 +155,28 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
     graph.add_node("recommendation", recommendation_node)
     graph.add_node("finalize", finalize.finalize_node)
 
-    # START → supervisor
+    # Core Phase 1 specialists — always present.
+    specialists = ["kubernetes", "metrics", "logs"]
+
+    # Phase 2 specialists — added only when their MCP server is wired in.
+    if deps.mcp_tempo is not None:
+        graph.add_node("tracing", tracing_node)
+        specialists.append("tracing")
+    if deps.mcp_ci is not None:
+        graph.add_node("deployment", deployment_node)
+        specialists.append("deployment")
+
+    # START → supervisor → fan out to all specialists → fan in at rca.
     graph.add_edge(START, "supervisor")
-    # supervisor → fan out to 3 specialists
-    graph.add_edge("supervisor", "kubernetes")
-    graph.add_edge("supervisor", "metrics")
-    graph.add_edge("supervisor", "logs")
-    # 3 specialists → fan in at rca (waits for all three)
-    graph.add_edge("kubernetes", "rca")
-    graph.add_edge("metrics", "rca")
-    graph.add_edge("logs", "rca")
+    for name in specialists:
+        graph.add_edge("supervisor", name)
+        graph.add_edge(name, "rca")
     # rca → recommendation → finalize → END
     graph.add_edge("rca", "recommendation")
     graph.add_edge("recommendation", "finalize")
     graph.add_edge("finalize", END)
 
+    log.info("graph_built", specialists=specialists, checkpointer=checkpointer is not None)
     return graph.compile(checkpointer=checkpointer)
 
 
