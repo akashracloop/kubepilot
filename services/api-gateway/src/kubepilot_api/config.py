@@ -23,7 +23,9 @@ class MCPEndpoints(BaseModel):
 class KeyPolicy(BaseModel):
     """What an API key is allowed to do (light multi-tenancy, Phase 2)."""
 
-    role: str = "investigator"  # "viewer" (read-only) | "investigator" (can trigger)
+    # RBAC v2 roles (ascending privilege): viewer < investigator < operator < admin.
+    # operator/admin see every namespace; viewer/investigator are namespace-scoped.
+    role: str = "investigator"
     namespaces: list[str] = Field(default_factory=list)  # empty = all namespaces
 
 

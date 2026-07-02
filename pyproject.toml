@@ -16,6 +16,7 @@ members = [
     "services/mcp-loki",
     "services/mcp-tempo",
     "services/mcp-ci",
+    "services/mcp-datadog",
     "services/slack-bot",
     "services/cli",
 ]
