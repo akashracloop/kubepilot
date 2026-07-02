@@ -30,7 +30,10 @@ RCA → recommendation → remediation plan → [policy + blast radius]
 
 `mcp-k8s-write` exposes a **curated, finite** set of reversible-leaning tools —
 `rollout_undo`, `rollout_restart`, `scale`, `restart_pod`, `cordon`/`uncordon`,
-`patch_image`, `edit_configmap` — with **dry-run on every tool**. There is no
+`patch_image`, `edit_configmap`. Each maps to exactly the Kubernetes verbs it
+needs and performs a **real mutation via the kubernetes client — but only when
+the apply gate (`applyEnabled`) is on**; otherwise every invoke returns a
+server-side dry-run preview (`dryRun=All`) and mutates nothing. There is no
 arbitrary shell/kubectl. It runs under its own **least-privilege ClusterRole**
 (exactly the verbs the tools need; no delete on secrets/PVC/namespaces) behind a
 NetworkPolicy that only the api-gateway can reach. `test_rbac_write.py` fails if
@@ -46,9 +49,20 @@ helm upgrade kubepilot-ai ./charts/kubepilot-ai -n kubepilot-system \
 
 - `remediation.enabled=false` (default) → no write path exists at all.
 - `applyEnabled=false` → even when enabled, writes are dry-run (the executor runs
-  the full gate, the write server mutates nothing).
+  the full gate — policy, blast cap, kill switch, audit, approval resume — and the
+  write server mutates nothing).
+- `applyEnabled=true` → an approved, in-policy action performs the **real**
+  cluster mutation.
 - Provide your own policies via `remediation.policiesYaml`; an empty/missing
   policy denies **everything** (fail-closed).
+
+### Optional knobs
+
+- `remediation.signalQuery` — a PromQL error-rate metric compared before/after the
+  write. When set, a regression auto-rolls-back reversible actions and reopens the
+  incident; unset → restarts-only validation (workload-agnostic).
+- `remediation.selfhealPatterns` — opt-in autonomous fixes that skip the HITL
+  interrupt (still fully gated). See [self-healing](self-healing.md).
 
 Real writes are exercised only in an isolated **kind sandbox**
 (`.github/workflows/remediation-e2e.yml`), never in the default CI.

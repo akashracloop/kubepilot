@@ -45,9 +45,23 @@ empirical-accuracy from eval history via **isotonic regression** (Pool Adjacent
 Violators — no sklearn, runs air-gapped), and reports the **Expected Calibration
 Error (ECE)** + a reliability curve for the AgentOps plot.
 
-At finalize, a fitted calibrator (shipped via `calibrator_path`) maps the raw RCA
-confidence to `calibrated_confidence`, overriding the critic's interim value. Gate:
-ECE < 10% on the eval set.
+At finalize, a fitted calibrator maps the raw RCA confidence to
+`calibrated_confidence`, overriding the critic's interim value. Gate: ECE < 10%
+on the eval set.
+
+**Producing + shipping the calibrator.** Fit it from a golden run and mount it:
+
+```bash
+make eval-calibrator                       # → dist/calibrator.json (needs a live key)
+# then ship it (mounted as a ConfigMap at apiGateway.phase3.calibratorPath):
+helm upgrade kubepilot-ai ./charts/kubepilot-ai \
+  --set apiGateway.phase3.calibratorPath=/etc/kubepilot/calibrator/calibrator.json \
+  --set-file apiGateway.phase3.calibratorJson=dist/calibrator.json
+```
+
+Without a shipped calibrator, finalize simply skips empirical calibration (the
+critic's interim `calibrated_confidence` stands). `GET /calibration` exposes the
+loaded curve for the AgentOps plot.
 
 ## Prompt versioning + A/B + rollback
 

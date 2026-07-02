@@ -173,6 +173,17 @@ remediation:
   # Override the shipped reference policies with your own (a YAML string keyed as
   # policies.yaml in the ConfigMap). Empty → the reference set is used.
   policiesYaml: ""
+  # Optional PromQL for the post-remediation validation error-rate signal. When
+  # set, the execute node compares it before/after the write and auto-rolls-back
+  # reversible actions on a regression. Empty → restarts-only validation
+  # (workload-agnostic; no PromQL assumptions).
+  signalQuery: ""
+  # Opt-in self-healing (autonomous fixes, still fully gated). Comma-separated
+  # pattern names: imagepull_revert, crashloop_restart. Empty → no autonomy;
+  # every remediation goes through the HITL approval interrupt. The matched action
+  # still passes policy + blast cap + kill switch + audit + auto-rollback.
+  selfhealPatterns: ""
+  selfhealRole: operator
 
 # -----------------------------------------------------------------------------
 # Persistence — bundled single-node Postgres/Redis for dev & prod-small. For

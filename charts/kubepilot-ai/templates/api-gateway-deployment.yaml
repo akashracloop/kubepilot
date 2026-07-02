@@ -78,6 +78,16 @@ spec:
             - name: KUBEPILOT_API_REMEDIATION_POLICY_PATH
               value: "/etc/kubepilot/remediation/policies.yaml"
             {{- end }}
+            {{- if .Values.remediation.signalQuery }}
+            - name: KUBEPILOT_API_REMEDIATION_SIGNAL_QUERY
+              value: {{ .Values.remediation.signalQuery | quote }}
+            {{- end }}
+            {{- if .Values.remediation.selfhealPatterns }}
+            - name: KUBEPILOT_API_REMEDIATION_SELFHEAL_PATTERNS
+              value: {{ .Values.remediation.selfhealPatterns | quote }}
+            - name: KUBEPILOT_API_REMEDIATION_SELFHEAL_ROLE
+              value: {{ .Values.remediation.selfhealRole | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.apiGateway.phase3.knowledgeSnapshotPath }}
             - name: KUBEPILOT_API_KNOWLEDGE_SNAPSHOT_PATH
