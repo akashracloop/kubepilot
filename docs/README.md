@@ -40,6 +40,7 @@ Start here. Docs are grouped by what you're trying to do.
 | [reference/phase-1-plan.md](./reference/phase-1-plan.md) | Phase 1 (MVP) implementation plan + Definition of Done. |
 | [reference/phase-2-plan.md](./reference/phase-2-plan.md) | Phase 2 (production-ready) implementation plan + Definition of Done. |
 | [reference/phase-3-plan.md](./reference/phase-3-plan.md) | Phase 3 (enterprise-grade) implementation plan + Definition of Done. |
+| [reference/phase-4-plan.md](./reference/phase-4-plan.md) | Phase 4 (autonomous, HITL-gated writes) implementation plan + Definition of Done. |
 
 ---
 
