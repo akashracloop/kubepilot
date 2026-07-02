@@ -48,6 +48,7 @@ from kubepilot_orch.agents import (
     metrics_agent,
     rca_agent,
     recommendation_agent,
+    remediation_agent,
     supervisor,
     tracing_agent,
 )
@@ -96,6 +97,13 @@ class AgentDeps:
     # Optional LLM pass to polish timeline labels at finalize (ordering untouched).
     # Off by default — deterministic labels are the reliable baseline.
     timeline_llm_labels: bool = False
+    # Phase 4 remediation. When True, a remediation node proposes an executable
+    # plan after recommendation, and the graph **interrupts before executing** it
+    # (HITL approval). Off by default — the whole write path is opt-in. Real
+    # execution requires ``mcp_write`` (W7); in W5 the execute node resolves the
+    # approval outcome only.
+    enable_remediation: bool = False
+    mcp_write: MCPClient | None = None
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -214,6 +222,33 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         )
         return update
 
+    async def remediation_node(state: InvestigationState) -> dict[str, Any]:
+        plan = await remediation_agent.run(state, llm=deps.llm)
+        update = remediation_agent.to_state_update(plan)
+        update["prompt_versions"] = _prompt_version(
+            remediation_agent.AGENT_NAME, remediation_agent.PROMPT_NAME, state
+        )
+        return update
+
+    async def execute_remediation_node(state: InvestigationState) -> dict[str, Any]:
+        # The graph interrupts BEFORE this node (interrupt_before below) so a human
+        # can approve/reject; the API records the decision into the checkpointed
+        # state, then the run resumes here. W5 resolves the approval outcome only —
+        # the real executor (mcp_write + audit + rollback) is wired in W7.
+        from kubepilot_orch.remediation import approval
+
+        plan = state.remediation_plan
+        if plan is None or not plan.actions:
+            return {"current_step": "remediation_skipped", "completed_agents": ["remediation_exec"]}
+        status = approval.plan_status(plan, state.approvals, generated_at=plan.generated_at)
+        # Only an "approved" plan would proceed to execution (W7); everything else
+        # (rejected/expired/pending) is recorded as the terminal remediation outcome.
+        return {
+            "remediation_outcome": status,
+            "current_step": "remediation_resolved",
+            "completed_agents": ["remediation_exec"],
+        }
+
     graph = StateGraph(InvestigationState)
 
     graph.add_node("supervisor", supervisor.supervisor_node)
@@ -272,8 +307,20 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         graph.add_edge("critic", "recommendation")
     else:
         graph.add_edge("rca", "recommendation")
-    # recommendation → finalize → END
-    graph.add_edge("recommendation", "finalize")
+
+    # Phase 4 remediation: recommendation → remediation → [INTERRUPT] → execute →
+    # finalize. The interrupt-before-execute is the HITL approval gate. Off by
+    # default, so the Phase 1-3 shape is recommendation → finalize unchanged.
+    interrupt_before: list[str] = []
+    if deps.enable_remediation:
+        graph.add_node("remediation", remediation_node)
+        graph.add_node("execute_remediation", execute_remediation_node)
+        graph.add_edge("recommendation", "remediation")
+        graph.add_edge("remediation", "execute_remediation")
+        graph.add_edge("execute_remediation", "finalize")
+        interrupt_before.append("execute_remediation")
+    else:
+        graph.add_edge("recommendation", "finalize")
     graph.add_edge("finalize", END)
 
     log.info(
@@ -282,9 +329,13 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         memory=deps.memory is not None,
         knowledge=deps.knowledge is not None,
         critic=deps.enable_critic,
+        remediation=deps.enable_remediation,
         checkpointer=checkpointer is not None,
     )
-    return graph.compile(checkpointer=checkpointer)
+    return graph.compile(
+        checkpointer=checkpointer,
+        interrupt_before=interrupt_before or None,
+    )
 
 
 def _prompt_version(agent_name: str, prompt_name: str, state: InvestigationState) -> dict[str, str]:

@@ -84,6 +84,7 @@ def _default_compiled_graph(
         calibrator=_build_calibrator(settings),
         enable_critic=settings.critic_enabled,
         timeline_llm_labels=settings.timeline_llm_labels,
+        enable_remediation=settings.remediation_enabled,
     )
     return build_graph(deps, checkpointer=checkpointer)
 
@@ -268,8 +269,13 @@ def build_app(
         allow_headers=["*"],
     )
 
+    principal_dep = make_principal_dep(settings)
     app.include_router(health_router)
-    app.include_router(make_investigations_router(principal_dep=make_principal_dep(settings)))
+    app.include_router(make_investigations_router(principal_dep=principal_dep))
+    # Phase 4: HITL remediation approval endpoints (RBAC-gated, audited).
+    from kubepilot_api.routes.approvals import make_approval_router
+
+    app.include_router(make_approval_router(principal_dep=principal_dep))
 
     return app
 

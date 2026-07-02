@@ -102,6 +102,12 @@ class ApiSettings(BaseSettings):
     # baseline; enabling adds one cheap summarization call per investigation.
     timeline_llm_labels: bool = False
 
+    # Phase 4 remediation (WRITES). When true, the graph proposes an executable
+    # remediation plan and interrupts before executing it (HITL approval). OFF by
+    # default — the entire write path is opt-in. Real execution also needs the
+    # mcp-k8s-write endpoint + a policy file (wired in later Phase 4 work).
+    remediation_enabled: bool = False
+
 
 def load_settings() -> ApiSettings:
     return ApiSettings()
