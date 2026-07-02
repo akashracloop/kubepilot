@@ -56,8 +56,33 @@ def _default_compiled_graph(settings: ApiSettings, checkpointer: Any | None = No
         # Phase 2 specialists — only wired when their MCP endpoint is configured.
         mcp_tempo=MCPClient("mcp-tempo", settings.mcp.tempo) if settings.mcp.tempo else None,
         mcp_ci=MCPClient("mcp-ci", settings.mcp.ci) if settings.mcp.ci else None,
+        memory=_build_memory(settings, orch_settings) if settings.memory_enabled else None,
     )
     return build_graph(deps, checkpointer=checkpointer)
+
+
+def _build_memory(settings: ApiSettings, orch_settings: Any) -> Any:
+    """Construct the long-term memory retriever (Phase 2)."""
+    from kubepilot_orch.memory import (
+        HashEmbedder,
+        InMemoryMemoryStore,
+        MemoryRetriever,
+        OpenAIEmbedder,
+    )
+    from kubepilot_orch.memory.store import PgVectorMemoryStore
+
+    # BYOK embeddings when an OpenAI key is present; else the offline hash embedder.
+    embedder: Any = (
+        OpenAIEmbedder(orch_settings.llm.openai_api_key)
+        if orch_settings.llm.openai_api_key
+        else HashEmbedder()
+    )
+    store: Any = (
+        PgVectorMemoryStore(settings.db.url, embedder.dim)
+        if settings.storage == "postgres"
+        else InMemoryMemoryStore()
+    )
+    return MemoryRetriever(embedder, store)
 
 
 def _default_repository(settings: ApiSettings) -> InvestigationRepository:

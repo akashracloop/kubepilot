@@ -79,6 +79,19 @@ def _build_user_message(state: InvestigationState) -> str:
         for i, ev in enumerate(state.evidence):
             parts.append(_format_evidence(i, ev))
 
+    if state.memory_context:
+        parts.append("")
+        parts.append(
+            "Similar past incidents (long-term memory — corroborating context, NOT evidence; "
+            "weigh by similarity, do not cite in evidence_refs):"
+        )
+        for past in state.memory_context:
+            outcome = f" → resolved: {past.outcome}" if past.outcome else ""
+            parts.append(
+                f"  - [{past.similarity:.2f}] {past.summary}"
+                f" (category={past.root_cause_category or 'unknown'}){outcome}"
+            )
+
     parts.append("")
     parts.append("Produce the structured RCAReport now.")
     return "\n".join(parts)

@@ -40,6 +40,7 @@ from kubepilot_orch.agents import (
     finalize,
     kubernetes_agent,
     logs_agent,
+    memory_agent,
     metrics_agent,
     rca_agent,
     recommendation_agent,
@@ -48,6 +49,7 @@ from kubepilot_orch.agents import (
 )
 from kubepilot_orch.llm.router import LLMRouter
 from kubepilot_orch.mcp.client import MCPClient
+from kubepilot_orch.memory.retriever import MemoryRetriever
 from kubepilot_orch.state import AgentOutput, InvestigationState
 
 log = structlog.get_logger(__name__)
@@ -68,6 +70,9 @@ class AgentDeps:
     mcp_loki: MCPClient
     mcp_tempo: MCPClient | None = None
     mcp_ci: MCPClient | None = None
+    # Phase 2 long-term memory. When present, a retrieval node runs before RCA and
+    # the concluded incident is indexed at finalize.
+    memory: MemoryRetriever | None = None
 
 
 def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
@@ -137,9 +142,21 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         )
         return _agent_to_state_update(deployment_agent.AGENT_NAME, output)
 
+    async def memory_node(state: InvestigationState) -> dict[str, Any]:
+        assert deps.memory is not None  # node only added when present
+        incidents = await memory_agent.run(state, retriever=deps.memory)
+        return memory_agent.to_state_update(incidents)
+
     async def rca_node(state: InvestigationState) -> dict[str, Any]:
         report = await rca_agent.run(state, llm=deps.llm)
         return rca_agent.to_state_update(report)
+
+    async def finalize_node(state: InvestigationState) -> dict[str, Any]:
+        update = await finalize.finalize_node(state)
+        if deps.memory is not None:
+            # Index the concluded incident so future investigations can recall it.
+            await memory_agent.index_incident(state, retriever=deps.memory)
+        return update
 
     async def recommendation_node(state: InvestigationState) -> dict[str, Any]:
         recs = await recommendation_agent.run(state, llm=deps.llm)
@@ -153,7 +170,7 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
     graph.add_node("logs", logs_node)
     graph.add_node("rca", rca_node)
     graph.add_node("recommendation", recommendation_node)
-    graph.add_node("finalize", finalize.finalize_node)
+    graph.add_node("finalize", finalize_node)
 
     # Core Phase 1 specialists — always present.
     specialists = ["kubernetes", "metrics", "logs"]
@@ -166,17 +183,30 @@ def build_graph(deps: AgentDeps, *, checkpointer: Any | None = None) -> Any:
         graph.add_node("deployment", deployment_node)
         specialists.append("deployment")
 
-    # START → supervisor → fan out to all specialists → fan in at rca.
+    # Phase 2 memory: a retrieval node between the specialist fan-in and RCA, so
+    # the RCA agent sees similar past incidents. Without memory, specialists → rca.
+    fan_in = "rca"
+    if deps.memory is not None:
+        graph.add_node("memory", memory_node)
+        graph.add_edge("memory", "rca")
+        fan_in = "memory"
+
+    # START → supervisor → fan out to all specialists → fan in.
     graph.add_edge(START, "supervisor")
     for name in specialists:
         graph.add_edge("supervisor", name)
-        graph.add_edge(name, "rca")
+        graph.add_edge(name, fan_in)
     # rca → recommendation → finalize → END
     graph.add_edge("rca", "recommendation")
     graph.add_edge("recommendation", "finalize")
     graph.add_edge("finalize", END)
 
-    log.info("graph_built", specialists=specialists, checkpointer=checkpointer is not None)
+    log.info(
+        "graph_built",
+        specialists=specialists,
+        memory=deps.memory is not None,
+        checkpointer=checkpointer is not None,
+    )
     return graph.compile(checkpointer=checkpointer)
 
 

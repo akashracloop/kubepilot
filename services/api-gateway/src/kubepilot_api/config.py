@@ -50,6 +50,11 @@ class ApiSettings(BaseSettings):
     # or "memory" (dev / no-DB). See kubepilot_orch.checkpointing.
     checkpointer: str = "postgres"
 
+    # Phase 2 long-term memory (pgvector). When enabled, similar past incidents are
+    # retrieved before RCA and concluded incidents are indexed. Uses a pgvector
+    # store when storage=postgres, else an in-process store (dev, non-persistent).
+    memory_enabled: bool = True
+
 
 def load_settings() -> ApiSettings:
     return ApiSettings()
