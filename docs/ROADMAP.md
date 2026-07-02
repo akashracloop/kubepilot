@@ -11,7 +11,7 @@
 | Phase | Theme | Duration target | Deliverable | Action posture |
 |---|---|---|---|---|
 | **Phase 1** | MVP — Read-Only Investigator | ~12 weeks | Autonomous read-only RCA for any k8s workload | **Observe** |
-| **Phase 2** | Production-Ready Analysis | ~10 weeks | MCP-native, persistent memory, timeline, Slack, CLI | **Observe + Notify** |
+| **Phase 2** 🚧 | Production-Ready Analysis | ~10 weeks | MCP-native, persistent memory, timeline, Slack, CLI | **Observe + Notify** |
 | **Phase 3** | Enterprise-Grade Agentic SRE | ~12 weeks | Multi-agent collaboration, eval framework, knowledge graph, advanced RCA | **Observe + Reason** |
 | **Phase 4** | Autonomous Operations | ~12 weeks | HITL-gated remediation, self-healing, rollback automation | **Observe + Act (with approval)** |
 

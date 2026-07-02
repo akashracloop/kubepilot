@@ -75,9 +75,17 @@ These five decisions are binding for the initial release. See [IDEA.md](IDEA.md)
 | Phase | Theme | Status |
 |---|---|---|
 | 1 | MVP — read-only RCA across k8s/Prom/Loki | 🚧 In progress |
-| 2 | Production-ready: MCP, memory, timeline, Slack, CLI | ⏳ Planned |
+| 2 | Production-ready: MCP, memory, timeline, Slack, CLI | 🚧 In active implementation |
 | 3 | Enterprise: multi-agent, eval framework, knowledge graph | ⏳ Planned |
 | 4 | Autonomous: HITL-gated remediation, auto-rollback, self-healing | ⏳ Planned |
+
+> **Phase 2 is landing now (not yet released).** The Tracing + Deployment
+> specialists (`mcp-tempo` / `mcp-ci`), long-term pgvector memory, the Slack bot,
+> and the `kubepilot` CLI are implemented behind default-off Helm flags. See the
+> Phase 2 docs: [tracing & CI](docs/tracing-and-ci.md) ·
+> [memory](docs/memory.md) · [Slack](docs/slack.md) · [CLI](docs/cli.md) ·
+> [MCP adapters](docs/mcp-adapters.md). Full plan in
+> [docs/PHASE_2_PLAN.md](docs/PHASE_2_PLAN.md).
 
 Full phase-by-phase detail in [docs/ROADMAP.md](docs/ROADMAP.md).
 
