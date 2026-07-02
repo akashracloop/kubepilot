@@ -1,10 +1,10 @@
 # Tracing & Deployment — the two Phase 2 specialists
 
-> Phase 2 adds two new investigation surfaces to the [Phase 1](./PHASE_1_PLAN.md)
+> Phase 2 adds two new investigation surfaces to the [Phase 1](../reference/phase-1-plan.md)
 > stack (k8s + Prometheus + Loki): **distributed traces** via `mcp-tempo` and
 > **deployment / CI-CD history** via `mcp-ci`. Each is a specialist sub-agent
 > backed by its own MCP server, on the same REST contract as the Phase 1 servers
-> ([ARCHITECTURE.md §6.1](./ARCHITECTURE.md#61-common-contract)). Both are
+> ([ARCHITECTURE.md §6.1](../reference/architecture.md#61-common-contract)). Both are
 > **read-only** and **off by default** — turning them on in Helm lights up the
 > corresponding branches of the LangGraph automatically.
 
@@ -31,7 +31,7 @@ rather than raw OTLP span batches. An agent reasons about a compact
 `TraceSummary` (root duration, span/error counts, slowest span) far more cheaply
 and accurately than about a raw span tree — the same token-efficiency argument
 as `mcp-k8s`'s `PodSummary`
-([ARCHITECTURE.md §3.3.1](./ARCHITECTURE.md#331-why-we-ship-our-own-mcp-servers-phase-1-and-how-that-evolves-phase-2)).
+([ARCHITECTURE.md §3.3.1](../reference/architecture.md#331-why-we-ship-our-own-mcp-servers-phase-1-and-how-that-evolves-phase-2)).
 
 ### 2.1 Tools
 
@@ -237,12 +237,12 @@ curl -s -X POST localhost:8085/mcp/invoke \
 Because the agents talk to **capabilities** (`tracing`, `deployment`), not to
 specific servers, you can point the tracing capability at the **official Grafana
 MCP server** (one server for metrics + logs + traces) config-only. See
-[mcp-adapters.md](./mcp-adapters.md) for the capability model and a worked
+[mcp-adapters.md](../configuration/mcp-adapters.md) for the capability model and a worked
 Grafana example. A first-party vendor CI adapter beyond the three shipped
 backends is a Phase 3 item.
 
 ## Next steps
 
-- [Long-term memory](./memory.md) — how concluded incidents become RCA context
-- [MCP adapters](./mcp-adapters.md) — swapping tool backends
-- [Architecture](./ARCHITECTURE.md) — the engineering view
+- [Long-term memory](memory.md) — how concluded incidents become RCA context
+- [MCP adapters](../configuration/mcp-adapters.md) — swapping tool backends
+- [Architecture](../reference/architecture.md) — the engineering view

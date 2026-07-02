@@ -32,6 +32,12 @@ function fmt(ts?: string): string {
   return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
 }
 
+function fmtTime(ts?: string): string {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? ts : d.toLocaleTimeString();
+}
+
 export default function InvestigationDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -135,6 +141,9 @@ export default function InvestigationDetailPage() {
   const rca = state.rca ?? null;
   const evidence = state.evidence ?? [];
   const recommendations = state.recommendations ?? [];
+  const timeline = state.timeline ?? [];
+  const memoryContext = state.memory_context ?? [];
+  const isCompleted = detail?.status === "completed";
   const isTerminal = detail ? TERMINAL.has(detail.status) : false;
 
   return (
@@ -253,6 +262,88 @@ export default function InvestigationDetailPage() {
                 {rca.reasoning}
               </p>
             </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Incident timeline */}
+      {isCompleted && timeline.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Timeline ({timeline.length})</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <ol className="space-y-3">
+              {timeline.map((t, i) => (
+                <li key={i} className="flex gap-3">
+                  <span className="mt-0.5 shrink-0 font-mono text-xs text-neutral-400">
+                    {fmtTime(t.at)}
+                  </span>
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700">
+                        {t.label}
+                      </span>
+                      <SeverityBadge severity={t.severity} />
+                      {t.source && (
+                        <span className="text-[11px] text-neutral-400">
+                          {t.source}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-neutral-700">{t.description}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Similar past incidents (long-term memory) */}
+      {isCompleted && memoryContext.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Similar past incidents ({memoryContext.length})</CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-3">
+            <p className="text-xs text-neutral-500">
+              Corroborating context retrieved from long-term memory — not part of
+              this investigation&apos;s evidence.
+            </p>
+            {memoryContext.map((m, i) => (
+              <div
+                key={m.incident_id || i}
+                className="rounded-md border border-neutral-200 p-3"
+              >
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
+                    {Math.round((m.similarity ?? 0) * 100)}% match
+                  </span>
+                  {m.root_cause_category && (
+                    <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-600">
+                      {m.root_cause_category}
+                    </span>
+                  )}
+                  {(m.namespace || m.service) && (
+                    <span className="text-[11px] text-neutral-400">
+                      {[m.namespace, m.service].filter(Boolean).join(" / ")}
+                    </span>
+                  )}
+                  {m.occurred_at && (
+                    <span className="text-[11px] text-neutral-400">
+                      {fmt(m.occurred_at)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-neutral-800">{m.summary}</p>
+                {m.outcome && (
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Outcome: {m.outcome}
+                  </p>
+                )}
+              </div>
+            ))}
           </CardBody>
         </Card>
       )}

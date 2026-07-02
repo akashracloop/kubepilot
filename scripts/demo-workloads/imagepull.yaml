@@ -1,0 +1,26 @@
+# A deployment referencing a non-existent image tag → ImagePullBackOff.
+# The Kubernetes agent should report the pull failure + the bad image ref.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: imagepull-app
+  namespace: demo
+  labels:
+    app: imagepull-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: imagepull-app
+  template:
+    metadata:
+      labels:
+        app: imagepull-app
+    spec:
+      containers:
+        - name: app
+          image: nginx:this-tag-does-not-exist-9999
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi

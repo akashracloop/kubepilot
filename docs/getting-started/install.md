@@ -1,8 +1,8 @@
 # Installing KubePilot AI
 
-> How to run KubePilot AI two ways: **(A)** locally for development, and **(B)** into a Kubernetes cluster via Helm. Read [ARCHITECTURE.md](./ARCHITECTURE.md) for the system view and [llm-providers.md](./llm-providers.md) for provider configuration.
+> How to run KubePilot AI two ways: **(A)** locally for development, and **(B)** into a Kubernetes cluster via Helm. Read [ARCHITECTURE.md](../reference/architecture.md) for the system view and [llm-providers.md](../configuration/llm-providers.md) for provider configuration.
 
-KubePilot AI is a **read-only** investigator in Phase 1 — it never writes to your cluster (see [ARCHITECTURE.md §8.3](./ARCHITECTURE.md#83-agent-safety-phase-1)). Everything below preserves that guarantee.
+KubePilot AI is a **read-only** investigator in Phase 1 — it never writes to your cluster (see [ARCHITECTURE.md §8.3](../reference/architecture.md#83-agent-safety-phase-1)). Everything below preserves that guarantee.
 
 The Phase 1 build ships the API gateway, the LangGraph orchestrator, three MCP servers (`k8s`, `prom`, `loki`), the Next.js web UI, and the umbrella Helm chart with its application templates. All of it deploys from one `helm install`.
 
@@ -21,7 +21,7 @@ Best for hacking on the orchestrator, MCP servers, or gateway. Runs the Python s
 | Docker | Runs Postgres + Redis via docker-compose | Docker Desktop / Colima |
 | [kind](https://kind.sigs.k8s.io/) | Local cluster for end-to-end work (optional) | `brew install kind` |
 | `kubectl`, `helm` | Cluster + chart tooling (optional locally) | `brew install kubectl helm` |
-| An LLM credential | At least one provider for real RCA | see [llm-providers.md](./llm-providers.md) |
+| An LLM credential | At least one provider for real RCA | see [llm-providers.md](../configuration/llm-providers.md) |
 
 ### A.2 Quickstart
 
@@ -116,7 +116,7 @@ The production distribution: one chart deploys the gateway, orchestrator, MCP se
 - Helm 3
 - Reachable Prometheus and Loki endpoints (Grafana LGTM stack — the only supported observability stack in Phase 1)
 - An LLM credential (cloud BYOK) **or** a reachable local model endpoint (Ollama / vLLM) for air-gapped installs
-- Cluster permission to create a namespace, a read-only ClusterRole, and a ClusterRoleBinding (see [ARCHITECTURE.md §10.3](./ARCHITECTURE.md#103-required-cluster-permissions))
+- Cluster permission to create a namespace, a read-only ClusterRole, and a ClusterRoleBinding (see [ARCHITECTURE.md §10.3](../reference/architecture.md#103-required-cluster-permissions))
 
 ### B.2 Install profiles
 
@@ -224,7 +224,7 @@ helm install kubepilot-ai ./charts/kubepilot-ai \
   -f charts/kubepilot-ai/values-prod-air-gapped.yaml
 ```
 
-That profile enables the bundled Ollama subchart and Phoenix, and sets the role bindings to Ollama/vLLM. See [llm-providers.md](./llm-providers.md#air-gapped-ollama--vllm) for the exact role configuration and model-size guidance.
+That profile enables the bundled Ollama subchart and Phoenix, and sets the role bindings to Ollama/vLLM. See [llm-providers.md](../configuration/llm-providers.md#air-gapped-ollama--vllm) for the exact role configuration and model-size guidance.
 
 ### B.6 Verifying the install
 
@@ -252,7 +252,7 @@ kubectl get clusterrole kubepilot-ai-mcp-k8s-reader -o yaml | grep -A2 verbs
 
 ### B.7 Trigger your first investigation
 
-Investigations are started over the REST API with the static `X-API-Key` header (Phase 1 auth — see [ARCHITECTURE.md §8.1](./ARCHITECTURE.md#81-authentication)). Retrieve the key you created and POST an investigation:
+Investigations are started over the REST API with the static `X-API-Key` header (Phase 1 auth — see [ARCHITECTURE.md §8.1](../reference/architecture.md#81-authentication)). Retrieve the key you created and POST an investigation:
 
 ```bash
 API_KEY=$(kubectl -n kubepilot-system get secret kubepilot-api-auth \
@@ -300,8 +300,8 @@ kubectl delete namespace kubepilot-system   # if you want the Secrets/PVCs gone 
 
 ## Next steps
 
-- [Configure LLM providers](./llm-providers.md) — all six providers, per-role routing, air-gapped setup
-- [Troubleshooting](./troubleshooting.md) — provider errors, MCP connectivity, RBAC, low-confidence RCA
-- [Architecture](./ARCHITECTURE.md) — the engineering view
+- [Configure LLM providers](../configuration/llm-providers.md) — all six providers, per-role routing, air-gapped setup
+- [Troubleshooting](troubleshooting.md) — provider errors, MCP connectivity, RBAC, low-confidence RCA
+- [Architecture](../reference/architecture.md) — the engineering view
 </content>
 </invoke>

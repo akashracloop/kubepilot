@@ -1,0 +1,78 @@
+# Local minikube profile — one-command demo with OpenAI gpt-4o-mini.
+# Images are built INTO minikube's docker daemon (see scripts/minikube-up.sh), so
+# imagePullPolicy: IfNotPresent uses them without any registry push.
+#
+#   export OPENAI_API_KEY=sk-...        # BYOK — loaded into a Secret by the script
+#   bash scripts/minikube-up.sh
+#
+# LLM credentials are NOT in this file: the script creates the
+# kubepilot-llm-credentials Secret (key: openai_api_key) from your env.
+
+global:
+  imageRegistry: ghcr.io/akashsahani2001
+  imagePullPolicy: IfNotPresent # use the locally-built images in minikube
+
+# ---- LLM: OpenAI gpt-4o-mini for every role (cheap, fast) --------------------
+llm:
+  defaultProvider: openai
+  roles:
+    routing: { provider: openai, model: gpt-4o-mini }
+    analysis: { provider: openai, model: gpt-4o-mini }
+    summarization: { provider: openai, model: gpt-4o-mini }
+  secretName: kubepilot-llm-credentials
+  credentials: {} # provided out-of-band by scripts/minikube-up.sh
+
+# ---- API gateway (hosts the orchestrator) -----------------------------------
+apiGateway:
+  storage: postgres
+  checkpointer: postgres
+  auth:
+    # Throwaway LOCAL key (safe to commit — not a secret). Use it from the UI/CLI.
+    apiKey: "local-dev-key"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 384Mi
+    limits:
+      memory: 768Mi
+
+webUi:
+  enabled: true
+
+# Long-term memory on: OpenAI embeddings (a key is configured) into pgvector.
+# (memory_enabled defaults true; shown here for clarity.)
+
+# ---- Bundled datastores (ephemeral for a laptop demo) -----------------------
+postgres:
+  enabled: true
+  persistence:
+    enabled: false # emptyDir — no PVC/StorageClass needed for a demo
+redis:
+  enabled: true
+
+# AgentOps Phoenix off by default to save RAM; set enabled=true to see traces.
+agentOps:
+  phoenix:
+    enabled: false
+
+# ---- MCP servers: k8s (read-only) + the in-cluster Prometheus/Loki -----------
+mcp:
+  k8s:
+    enabled: true
+    rbac:
+      scope: cluster # read-only ClusterRole across all namespaces (incl. demo)
+  prom:
+    enabled: true
+    upstream:
+      # prometheus-community/prometheus release "prom" → <release>-prometheus-server
+      url: http://prom-prometheus-server.observability.svc.cluster.local
+  loki:
+    enabled: true
+    upstream:
+      # grafana/loki-stack release "loki" → service "loki" on 3100
+      url: http://loki.observability.svc.cluster.local:3100
+  # Tempo/CI need a trace source / CI backend — off for the base local demo.
+  tempo:
+    enabled: false
+  ci:
+    enabled: false

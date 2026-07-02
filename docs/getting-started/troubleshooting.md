@@ -1,6 +1,6 @@
 # Troubleshooting
 
-> Concrete **symptom → cause → fix** for the issues you're most likely to hit in Phase 1. See also [install.md](./install.md) and [llm-providers.md](./llm-providers.md).
+> Concrete **symptom → cause → fix** for the issues you're most likely to hit in Phase 1. See also [install.md](install.md) and [llm-providers.md](../configuration/llm-providers.md).
 
 Quick triage checklist:
 
@@ -87,7 +87,7 @@ kubectl -n kubepilot-system logs deploy/kubepilot-ai-orchestrator
   kubectl get clusterrole kubepilot-ai-mcp-k8s-reader -o yaml
   ```
 
-**This is not a bug to "fix" by adding write verbs.** The verb set is fixed to `get`/`list`/`watch` by design and enforced by `services/mcp-k8s/tests/test_rbac.py`. There is intentionally **no `get_secret` tool**, and `get_configmap` returns **keys only, never values** — a permission error on Secrets is the read-only guarantee working as intended ([ARCHITECTURE.md §8.3](./ARCHITECTURE.md#83-agent-safety-phase-1)).
+**This is not a bug to "fix" by adding write verbs.** The verb set is fixed to `get`/`list`/`watch` by design and enforced by `services/mcp-k8s/tests/test_rbac.py`. There is intentionally **no `get_secret` tool**, and `get_configmap` returns **keys only, never values** — a permission error on Secrets is the read-only guarantee working as intended ([ARCHITECTURE.md §8.3](../reference/architecture.md#83-agent-safety-phase-1)).
 
 ---
 
@@ -118,7 +118,7 @@ kubectl -n kubepilot-system logs deploy/kubepilot-ai-orchestrator
 - Use **14B+ for the analysis role** (e.g. `qwen2.5:14b` via vLLM); keep `routing`/`summarization` on a fast 8B model.
 - Make sure the model is actually pulled/served (`ollama pull qwen2.5:14b`; confirm the vLLM endpoint serves the named model).
 - Verify `llm.ollama.baseUrl` / `vllm_base_url` resolve from inside the cluster.
-- See [llm-providers.md §6](./llm-providers.md#6-air-gapped--ollama--vllm).
+- See [llm-providers.md §6](../configuration/llm-providers.md#6-air-gapped--ollama--vllm).
 
 ---
 
@@ -130,7 +130,7 @@ kubectl -n kubepilot-system logs deploy/kubepilot-ai-orchestrator
 
 **Fix.**
 - Test the raw stream with `curl -N` (disables buffering): `curl -N localhost:8080/investigations/<id>/stream -H "X-API-Key: $KEY"`.
-- If a reverse proxy/ingress sits in front, disable response buffering for the stream path (e.g. nginx `proxy_buffering off;`). SSE was chosen precisely for its simplicity ([ARCHITECTURE.md §13, decision 1](./ARCHITECTURE.md#13-resolved-architecture-decisions)) — buffering is the usual culprit.
+- If a reverse proxy/ingress sits in front, disable response buffering for the stream path (e.g. nginx `proxy_buffering off;`). SSE was chosen precisely for its simplicity ([ARCHITECTURE.md §13, decision 1](../reference/architecture.md#13-resolved-architecture-decisions)) — buffering is the usual culprit.
 - If the investigation already completed, fetch the final snapshot instead: `GET /investigations/{id}`.
 - No progress at all? Check orchestrator logs — a stalled investigation usually means an upstream (MCP/LLM/DB) failure, not an SSE problem.
 

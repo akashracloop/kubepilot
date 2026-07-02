@@ -2,7 +2,7 @@
 
 > All four phases of the project, with concrete deliverables, success criteria, and the boundary between phases.
 
-> Source-of-truth pairing: [IDEA.md](../IDEA.md) (product vision), [ARCHITECTURE.md](./ARCHITECTURE.md) (engineering view), [PHASE_1_PLAN.md](./PHASE_1_PLAN.md) (next-up execution).
+> Source-of-truth pairing: [IDEA.md](../../IDEA.md) (product vision), [ARCHITECTURE.md](architecture.md) (engineering view), [PHASE_1_PLAN.md](phase-1-plan.md) (next-up execution).
 
 ---
 
@@ -22,7 +22,7 @@ Each phase is a **shippable release**. No phase begins until the previous one ha
 # Phase 1 — MVP: Read-Only Incident Investigator
 
 **Release:** `v0.1.x`
-**Detail:** Full implementation plan in [PHASE_1_PLAN.md](./PHASE_1_PLAN.md).
+**Detail:** Full implementation plan in [PHASE_1_PLAN.md](phase-1-plan.md).
 
 ## Goal
 
@@ -68,14 +68,14 @@ Demonstrate that a multi-agent system can autonomously investigate Kubernetes in
 
 ## Exit Gate
 
-All Phase 1 Definition of Done items in [PHASE_1_PLAN.md §11](./PHASE_1_PLAN.md#11-definition-of-done-v010-release-checklist) checked. Tagged release. Demo published.
+All Phase 1 Definition of Done items in [PHASE_1_PLAN.md §11](phase-1-plan.md#11-definition-of-done-v010-release-checklist) checked. Tagged release. Demo published.
 
 ---
 
 # Phase 2 — Production-Ready Analysis
 
 **Release:** `v0.2.x`
-**Detail:** Full implementation plan in [PHASE_2_PLAN.md](./PHASE_2_PLAN.md).
+**Detail:** Full implementation plan in [PHASE_2_PLAN.md](phase-2-plan.md).
 
 ## Goal
 
@@ -92,7 +92,7 @@ Move from "tech demo" to "team uses this daily." Add the missing investigation s
 | **Slack Bot** | `@kubepilot why is X failing?` in incident channels; reports back inline |
 | **CLI** | `kubepilot investigate <service>` with `--output json` for scripting/CI |
 | **Multi-tenancy (light)** | Namespace allowlists per user; RBAC for UI roles |
-| **MCP adapter pattern** | Capability-based routing so users can plug in the official Grafana MCP, community k8s servers, or vendor MCPs (Datadog, etc.) without touching agent code. Our Phase 1 MCP servers become the reference implementation, not the only option. See [ARCHITECTURE.md §3.3.1](./ARCHITECTURE.md#331-why-we-ship-our-own-mcp-servers-phase-1-and-how-that-evolves-phase-2). |
+| **MCP adapter pattern** | Capability-based routing so users can plug in the official Grafana MCP, community k8s servers, or vendor MCPs (Datadog, etc.) without touching agent code. Our Phase 1 MCP servers become the reference implementation, not the only option. See [ARCHITECTURE.md §3.3.1](architecture.md#331-why-we-ship-our-own-mcp-servers-phase-1-and-how-that-evolves-phase-2). |
 
 ## Architecture Changes
 

@@ -6,9 +6,9 @@
 > where they live (**Slack**, **CLI**) — while making the MCP tool layer
 > **pluggable** so users can bring their own observability backends.
 
-> Reference: [ARCHITECTURE.md](./ARCHITECTURE.md) (the *what*), this doc (the
-> *how* for v0.2.x), [ROADMAP.md](./ROADMAP.md) (the *when across phases*),
-> [PHASE_1_PLAN.md](./PHASE_1_PLAN.md) (what shipped in v0.1.x and is assumed
+> Reference: [ARCHITECTURE.md](architecture.md) (the *what*), this doc (the
+> *how* for v0.2.x), [ROADMAP.md](roadmap.md) (the *when across phases*),
+> [PHASE_1_PLAN.md](phase-1-plan.md) (what shipped in v0.1.x and is assumed
 > here). **Do not start Phase 2 until Phase 1 is tagged and demoed.**
 
 ---
@@ -389,7 +389,7 @@ If any step needs manual intervention or fails first try, Phase 2 isn't done.
 
 ## 12. After Phase 2
 
-When every box above is green, move to [ROADMAP.md](./ROADMAP.md) Phase 3
+When every box above is green, move to [ROADMAP.md](roadmap.md) Phase 3
 (multi-agent critique, knowledge graph, advanced RCA, eval/calibration,
 guardrails). **Do not start Phase 3 before Phase 2 ships.** The bright line into
 Phase 4 (writes to the cluster) stays untouched until Phase 3 quality is proven.

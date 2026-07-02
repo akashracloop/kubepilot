@@ -8,7 +8,7 @@ By contributing you agree your work is licensed under [Apache 2.0](LICENSE).
 
 ## 1. Ground rules
 
-- **Read the context first.** [IDEA.md](IDEA.md) (product), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (engineering), [docs/PHASE_1_PLAN.md](docs/PHASE_1_PLAN.md) (the current milestone).
+- **Read the context first.** [IDEA.md](IDEA.md) (product), [docs/ARCHITECTURE.md](docs/reference/architecture.md) (engineering), [docs/PHASE_1_PLAN.md](docs/reference/phase-1-plan.md) (the current milestone).
 - **Respect the locked product decisions.** Read-only in Phase 1, self-hosted via Helm, Grafana LGTM only, BYOK multi-provider + local models, workload-agnostic. PRs that violate these will be asked to change.
 - **Be kind.** See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
@@ -24,7 +24,7 @@ make dev-up        # local Postgres (pgvector/pgvector:pg16) + Redis via docker-
 make smoke-test    # verify config + DB + Redis + LLM wiring
 ```
 
-Full details in [docs/install.md](docs/install.md). Common `make` targets:
+Full details in [docs/install.md](docs/getting-started/install.md). Common `make` targets:
 
 | Target | What it does |
 |---|---|
@@ -78,7 +78,7 @@ Coverage target: **70% line coverage** on `orchestrator` and the MCP servers (UI
 
 ## 5. State-schema versioning discipline (orchestrator)
 
-**If your PR touches the LangGraph `InvestigationState` shape, this section is mandatory.** LangGraph serializes state into Postgres at every node transition, so a careless field change breaks in-flight investigations, replay of past incidents, and rolling deploys. The full rationale and reference implementation are in [ARCHITECTURE.md §3.2.1](docs/ARCHITECTURE.md#321-state-schema--versioning). The rules:
+**If your PR touches the LangGraph `InvestigationState` shape, this section is mandatory.** LangGraph serializes state into Postgres at every node transition, so a careless field change breaks in-flight investigations, replay of past incidents, and rolling deploys. The full rationale and reference implementation are in [ARCHITECTURE.md §3.2.1](docs/reference/architecture.md#321-state-schema--versioning). The rules:
 
 1. **State is a Pydantic `BaseModel`** (not `TypedDict`) with an embedded `schema_version: int`.
 2. **Additive-only between minor bumps.** New fields **must** have a default. **Never rename, never remove, never change a field's type.** ~95% of changes are additive and need zero migration work.
@@ -120,7 +120,7 @@ Sign-off is **optional but appreciated**. Add it with `git commit -s` (appends a
 
 ## 7. Phase discipline
 
-**Do not pull Phase 2+ work forward.** Scope creep is the single biggest risk to this project ([PHASE_1_PLAN.md §10](docs/PHASE_1_PLAN.md), [§12](docs/PHASE_1_PLAN.md)). Concretely, the following are **out of scope until later phases** and PRs adding them will be deferred to issues:
+**Do not pull Phase 2+ work forward.** Scope creep is the single biggest risk to this project ([PHASE_1_PLAN.md §10](docs/reference/phase-1-plan.md), [§12](docs/reference/phase-1-plan.md)). Concretely, the following are **out of scope until later phases** and PRs adding them will be deferred to issues:
 
 - **Any** cluster writes / remediation execution (Phase 4 — read-only is architectural, not optional)
 - Tracing agent + Tempo MCP, Deployment agent + CI MCP (Phase 2)
@@ -129,7 +129,7 @@ Sign-off is **optional but appreciated**. Add it with `git commit -s` (appends a
 - Datadog / New Relic / ELK / Splunk integrations — Grafana LGTM only in Phase 1
 - Multi-cluster, SaaS control plane, OIDC/Keycloak auth (later phases)
 
-Have a great idea for a future phase? **Open an issue** so it's captured — don't smuggle it into a Phase 1 PR. Check [docs/ROADMAP.md](docs/ROADMAP.md) for where things land.
+Have a great idea for a future phase? **Open an issue** so it's captured — don't smuggle it into a Phase 1 PR. Check [docs/ROADMAP.md](docs/reference/roadmap.md) for where things land.
 
 ---
 

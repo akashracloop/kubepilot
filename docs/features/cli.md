@@ -173,6 +173,6 @@ stdout keeps machine-readable output clean.
 
 ## Next steps
 
-- [Slack bot](./slack.md) — the same investigations from an incident channel
-- [Install](./install.md) — running the gateway and creating the `X-API-Key`
-- [Architecture §5](./ARCHITECTURE.md#5-end-to-end-data-flow) — what happens after you hit `investigate`
+- [Slack bot](slack.md) — the same investigations from an incident channel
+- [Install](../getting-started/install.md) — running the gateway and creating the `X-API-Key`
+- [Architecture §5](../reference/architecture.md#5-end-to-end-data-flow) — what happens after you hit `investigate`
