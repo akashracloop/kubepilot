@@ -373,9 +373,14 @@ export default function InvestigationDetailPage() {
                   <SeverityBadge severity={e.severity} />
                 </div>
                 <p className="text-sm text-neutral-800">{e.summary}</p>
-                {e.detail && (
-                  <p className="mt-1 whitespace-pre-wrap text-xs text-neutral-500">
-                    {e.detail}
+                {e.detail && Object.keys(e.detail).length > 0 && (
+                  <p className="mt-1 whitespace-pre-wrap font-mono text-xs text-neutral-500">
+                    {Object.entries(e.detail)
+                      .map(
+                        ([k, v]) =>
+                          `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`,
+                      )
+                      .join("  ·  ")}
                   </p>
                 )}
               </div>
